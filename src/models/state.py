@@ -1,6 +1,8 @@
 """State representation for search algorithms."""
-from typing import Tuple, Any, Optional
+from typing import Tuple, Any, Optional, TYPE_CHECKING
 
+if TYPE_CHECKING:
+    from src.models.board import Board
 
 class State:
     """Represents a state of the Futoshiki puzzle during solving.
@@ -13,7 +15,7 @@ class State:
         puzzle_ref: Reference to the original puzzle board object
     """
     
-    def __init__(self, board: Tuple[Tuple[int, ...], ...], puzzle_ref: Any) -> None:
+    def __init__(self, board: Tuple, puzzle_ref: Optional[Any] = None) -> None:
         """Initialize a search state.
         
         Args:
