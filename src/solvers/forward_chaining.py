@@ -2,17 +2,22 @@
 Forward chaining solver for Futoshiki puzzles.
 Input State: Initial board configuration as a State object
 Output State: Solved board configuration as a State object, or None if unsolvable
-Implement function:
-- forward_chaining_solver(initial_state: State) -> Optional[State]
+
+**Optimizations:**
+- Use KB.get_unit_clauses() for O(1) unit clause lookup
+- Maintain active clause set to avoid re-processing satisfied clauses
+- Use deque for efficient agenda management
+- Pre-compute variable-to-cell mapping for O(1) solution reconstruction
 '''
-from typing import Optional
+from typing import Optional, Dict, Tuple
+from collections import deque
 from src.models.state import State
 from src.models.kb import KnowledgeBase
 from src.models.board import Board 
 
 def forward_chaining_solver(initial_state: State, kb: KnowledgeBase) -> Optional[State]:
     '''
-    Forward chaining based on Unit Propagation
+    Forward chaining based on Unit Propagation with optimizations.
     
     Args:
         initial_state: The starting state of the board
@@ -24,16 +29,27 @@ def forward_chaining_solver(initial_state: State, kb: KnowledgeBase) -> Optional
         # Empty KB - return initial state
         return initial_state
     
-    # Initialize: agenda with unit clauses
-    agenda = [c[0] for c in kb.clauses if len(c) == 1]
+    # Pre-compute variable-to-cell mapping for O(1) solution reconstruction
+    N = kb.N
+    var_to_cell: Dict[int, Tuple[int, int, int]] = {}
+    for r in range(1, N + 1):
+        for c in range(1, N + 1):
+            for v in range(1, N + 1):
+                var_id = kb.get_var_id(r, c, v)
+                var_to_cell[var_id] = (r, c, v)
+    
+    # Initialize: agenda with unit clauses (O(1) lookup now)
+    unit_clauses = kb.get_unit_clauses()
+    agenda = deque(unit_clauses)  # Use deque for O(1) popleft
     inferences = {}
     
     # Track each clause's unsatisfied literals
     clauses_list = [list(clause) for clause in kb.clauses]
     satisfied = [False] * len(clauses_list)
+    active_clauses = set(range(len(clauses_list)))  # Track unsatisfied clauses
 
     while agenda:
-        p = agenda.pop()
+        p = agenda.popleft()  # FIFO is better than LIFO
         
         # Skip if already inferred
         if p in inferences:
@@ -42,15 +58,14 @@ def forward_chaining_solver(initial_state: State, kb: KnowledgeBase) -> Optional
         # Mark as inferred
         inferences[p] = True
         
-        # Process all clauses
-        for i, clause in enumerate(clauses_list):
-            if satisfied[i]:
-                # Clause already satisfied
-                continue
+        # Only process clauses that aren't satisfied yet (optimization)
+        for i in list(active_clauses):  # Iterate copy to allow modification
+            clause = clauses_list[i]
             
             # If p satisfies the clause, mark it as satisfied
             if p in clause:
                 satisfied[i] = True
+                active_clauses.discard(i)  # Remove from active
                 continue
             
             # If -p is in the clause, remove it
@@ -67,27 +82,13 @@ def forward_chaining_solver(initial_state: State, kb: KnowledgeBase) -> Optional
                     if unit_lit not in inferences and -unit_lit not in inferences:
                         agenda.append(unit_lit)
     
-    # Build the solved board from inferences
-    # Create a list to track variable assignments
-    N = kb.N
+    # Build the solved board from inferences (using pre-computed mapping)
     board = [[0] * N for _ in range(N)]
     
-    # Convert inferences back to board cells
-    # var_id = (r - 1) * (N ** 2) + (c - 1) * N + v
-    # Reverse: given var_id, find r, c, v
     for var_id in inferences:
         if var_id > 0:  # Only positive literals represent assignments
-            # var_id = (r - 1) * N^2 + (c - 1) * N + v
-            adjusted_id = var_id - 1
-            r_idx = adjusted_id // (N * N)
-            remainder = adjusted_id % (N * N)
-            c_idx = remainder // N
-            v = (remainder % N) + 1
-            
-            r = r_idx + 1
-            c = c_idx + 1
-            
-            if 1 <= r <= N and 1 <= c <= N and 1 <= v <= N:
+            if var_id in var_to_cell:
+                r, c, v = var_to_cell[var_id]
                 board[r - 1][c - 1] = v
     
     # Convert board list to tuple for State

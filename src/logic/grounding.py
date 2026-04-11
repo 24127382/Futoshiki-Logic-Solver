@@ -11,6 +11,10 @@ from typing import List, Tuple
 def ground_axioms(kb: KnowledgeBase, board: Board) -> None:
     """Ground all axioms into the knowledge base.
     
+    **Optimizations:**
+    - Skip grounding cells already filled in initial state
+    - Only ground unfilled cells to reduce clause explosion
+    
     This function iterates over all cells, rows, and columns of the board, grounding the relevant axioms for each.
     It also grounds puzzle-specific axioms like given clues and inequality constraints.
     It adds the resulting CNF clauses to the knowledge base.
@@ -19,28 +23,33 @@ def ground_axioms(kb: KnowledgeBase, board: Board) -> None:
         kb: The knowledge base to which grounded clauses will be added
         board: The Futoshiki puzzle board with initial state and constraints
     """
-    # Ground box axioms for each cell (exactly one value per cell)
+    initial_board = board.initial_state.board
+    
+    # Ground box axioms for each UNFILLED cell (skip pre-filled cells)
     for r in range(1, kb.N + 1):
         for c in range(1, kb.N + 1):
-            clauses = exactly_one(kb, r, c)
+            # Use optimized partial grounding
+            clauses = exactly_one_partial(kb, r, c, initial_board)
             for clause in clauses:
                 kb.add_clause(clause)
     
-    # Ground row axioms for each row
+    # Ground row axioms for each row (optimized for unfilled cells)
     for r in range(1, kb.N + 1):
         clauses = at_least_one_row(kb, r)
         for clause in clauses:
             kb.add_clause(clause)
-        clauses = at_most_one_row(kb, r)
+        # Use optimized at_most_one that skips filled cells
+        clauses = at_most_one_row_partial(kb, r, initial_board)
         for clause in clauses:
             kb.add_clause(clause)
             
-    # Ground column axioms for each column
+    # Ground column axioms for each column (optimized for unfilled cells)
     for c in range(1, kb.N + 1):
         clauses = at_least_one_col(kb, c)
         for clause in clauses:
             kb.add_clause(clause)
-        clauses = at_most_one_col(kb, c)
+        # Use optimized at_most_one that skips filled cells
+        clauses = at_most_one_col_partial(kb, c, initial_board)
         for clause in clauses:
             kb.add_clause(clause)
     

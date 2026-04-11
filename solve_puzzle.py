@@ -2,6 +2,12 @@
 """
 Script to solve a Futoshiki puzzle from input file.
 Usage: python solve_puzzle.py <input_file>
+
+Uses optimized solver with:
+- Clause indexing by length for O(1) unit clause lookup
+- Partial grounding to skip pre-filled cells
+- Active clause tracking in forward chaining
+- Pre-computed variable mapping for solution reconstruction
 """
 
 import sys
@@ -10,80 +16,39 @@ from src.models.kb import KnowledgeBase
 from src.models.state import State
 from src.solvers.forward_chaining import forward_chaining_solver
 from src.logic.grounding import ground_axioms
+from src.utils.parser import load_puzzle_file, format_board
 
 
-def load_puzzle(filename):
-    """Load puzzle from file format:
-    Line 1: N (board size)
-    Lines 2 to N+1: Initial board state (N values per line, 0 = empty)
-    Last line: Constraints (format: row col op row col op ...)
-    """
-    with open(filename, 'r') as f:
-        lines = f.readlines()
-    
-    N = int(lines[0].strip())
-    
-    # Load initial state
-    initial_board = []
-    for i in range(1, N + 1):
-        row = tuple(map(int, lines[i].split()))
-        initial_board.append(row)
-    initial_board = tuple(initial_board)
-    
-    # Parse constraints (simplified format)
-    constraints = []
-    if len(lines) > N + 1:
-        constraint_line = lines[N + 1].strip()
-        parts = constraint_line.split()
-        for i in range(0, len(parts), 3):
-            if i + 2 < len(parts):
-                parts_list = parts[i:i+3]
-                r, c, op = int(parts_list[0]), int(parts_list[1]), parts_list[2]
-                constraints.append((r, c, op))
-    
-    return N, initial_board, tuple(constraints)
-
-
-def print_board(board, title="Board"):
-    """Pretty print a board."""
-    print(f"\n{title}:")
-    print("+" + "-"*3 + "+" * len(board[0]))
-    for row in board:
-        print("|" + "|".join(str(x) if x != 0 else " " for x in row) + "|")
-    print("+" + "-"*3 + "+" * len(board[0]))
-
-
-def solve_puzzle(input_file):
+def solve_puzzle(input_file: str) -> None:
     """Load and solve a puzzle."""
     print(f"Loading puzzle from {input_file}...")
     
     try:
-        N, initial_board, constraints = load_puzzle(input_file)
+        board, initial_state = load_puzzle_file(input_file)
     except Exception as e:
         print(f"Error loading puzzle: {e}")
         return
     
+    N = board.N
     print(f"Board size: {N}x{N}")
-    print(f"Constraints: {len(constraints)}")
+    print(f"Constraints: {len(board.constraints)}")
+    print(format_board(initial_state.board, "Initial State"))
     
-    # Create board and knowledge base
-    initial_state = State(initial_board, None)
-    print_board(initial_board, "Initial State")
-    
-    board = Board(N, initial_state, constraints)
+    # Create knowledge base
     kb = KnowledgeBase(N)
     
-    # Ground all axioms
+    # Ground all axioms (with optimizations)
     print("\nGrounding axioms...")
     ground_axioms(kb, board)
     print(f"Generated {len(kb.clauses)} clauses")
+    print(f"  Length distribution: {kb.clauses_by_length}")
     
-    # Solve using forward chaining
+    # Solve using forward chaining (with optimizations)
     print("\nSolving with Forward Chaining...")
     solution = forward_chaining_solver(initial_state, kb)
     
     if solution:
-        print_board(solution.board, "Solution")
+        print(format_board(solution.board, "Solution"))
         print("\n✓ Puzzle solved!")
     else:
         print("\n✗ No solution found")
