@@ -1,163 +1,100 @@
-"""Parser for Futoshiki puzzle input files.
+"""Parser for Futoshiki puzzle input files."""
 
-Supports multiple input formats for puzzle definitions.
-"""
-
-from typing import Tuple, List
+from typing import Tuple
 from src.models.state import State
 from src.models.board import Board
 
-
 def load_puzzle_file(filename: str) -> Tuple[Board, State]:
-    """Load and parse a Futoshiki puzzle from an input file.
-    
-    **File Format:**
-    Line 1: N (board size)
-    Lines 2 to N+1: Initial board state (N space-separated integers per line)
-                    0 = empty cell, 1-N = given value
-    Last line: Constraints (optional)
-               Format: row col op row col op ...
-               where op is '<' or '>'
-    
-    Args:
-        filename: Path to puzzle file
-        
-    Returns:
-        Tuple of (Board, State) ready for solving
-        
-    Raises:
-        ValueError: If file format is invalid
-        IOError: If file cannot be read
+    """
+    Load and parse a Futoshiki puzzle.
+
+    Expected format (sections separated by blank lines):
+    - Line 1: N (Board Size)
+    - Next N lines: Initial grid (comma-separated)
+    - Next N lines: Horizontal constraints (comma-separated, 1 for <, -1 for >)
+    - Next N-1 lines: Vertical constraints (comma-separated, 1 for top < bottom, -1 for top > bottom)
     """
     with open(filename, 'r') as f:
+        # Read lines, strip whitespace, and completely ignore empty lines
         lines = [line.strip() for line in f if line.strip()]
-    
+
     if not lines:
         raise ValueError("Empty puzzle file")
-    
-    # Parse board size
+
     try:
+        # 1. Parse N (Board Size)
         N = int(lines[0])
-    except ValueError:
-        raise ValueError(f"First line must be board size (integer), got: {lines[0]}")
-    
-    if N <= 0:
-        raise ValueError(f"Board size must be positive, got: {N}")
-    
-    # Parse initial board state
-    if len(lines) < N + 1:
-        raise ValueError(f"Expected {N+1} lines for board state, got {len(lines)}")
-    
-    initial_board = []
-    for i in range(1, N + 1):
-        try:
-            row = tuple(map(int, lines[i].split()))
-        except ValueError:
-            raise ValueError(f"Line {i}: invalid board values (must be integers)")
-        
-        if len(row) != N:
-            raise ValueError(f"Line {i}: expected {N} values, got {len(row)}")
-        
-        # Validate values
-        for val in row:
-            if not (0 <= val <= N):
-                raise ValueError(f"Line {i}: value {val} out of range [0, {N}]")
-        
-        initial_board.append(row)
-    
-    initial_board = tuple(initial_board)
-    
-    # Parse constraints (if present)
-    constraints = ()
-    if len(lines) > N + 1:
-        constraint_line = lines[N + 1]
-        constraints = parse_constraints(constraint_line, N)
-    
-    # Create State and Board objects
-    initial_state = State(initial_board, None)
-    board = Board(N, initial_state, constraints)
-    
-    return board, initial_state
 
+        # Ensure we have exactly the right amount of data lines
+        expected_lines = 1 + N + N + (N - 1) # Size + Board + Horizontal + Vertical
+        if len(lines) != expected_lines:
+            raise ValueError(f"Expected {expected_lines} data lines for a {N}x{N} board, but found {len(lines)}")
 
-def parse_constraints(constraint_str: str, N: int) -> Tuple[Tuple[int, int, str], ...]:
-    """Parse constraint string into constraint tuples.
-    
-    **Format:** row col op row col op ...
-    where op is '<' or '>'
-    
-    Example: "0 0 < 0 1 < 1 0 >" means:
-    - cell[0][0] < cell[0][1]
-    - cell[0][1] < cell[1][0]
-    - cell[1][0] > (implicit right cell)
-    
-    Args:
-        constraint_str: Space-separated constraint specification
-        N: Board size for validation
-        
-    Returns:
-        Tuple of (row, col, operator) tuples
-        
-    Raises:
-        ValueError: If constraint format is invalid
-    """
-    if not constraint_str:
-        return ()
-    
-    parts = constraint_str.split()
-    if len(parts) % 3 != 0:
-        raise ValueError(f"Constraints must be triplets (row col op), got {len(parts)} parts")
-    
-    constraints = []
-    for i in range(0, len(parts), 3):
-        try:
-            r = int(parts[i])
-            c = int(parts[i + 1])
-            op = parts[i + 2]
-        except ValueError:
-            raise ValueError(f"Invalid constraint at position {i}: expected (row col op)")
-        
-        if not (0 <= r < N and 0 <= c < N):
-            raise ValueError(f"Constraint position ({r}, {c}) out of bounds for {N}x{N} board")
-        
-        if op not in ['<', '>']:
-            raise ValueError(f"Invalid operator '{op}', must be '<' or '>'")
-        
-        # Convert to 1-indexed for internal representation
-        constraints.append((r + 1, c + 1, op))
-    
-    return tuple(constraints)
+        # 2. Parse Initial Grid (Indices 1 to N)
+        initial_board = []
+        for i in range(1, N + 1):
+            row = tuple(int(x.strip()) for x in lines[i].split(','))
+            if len(row) != N:
+                raise ValueError(f"Grid row {i} should have {N} values, found {len(row)}")
+            initial_board.append(row)
 
+        constraints = []
+
+        # 3. Parse Horizontal Constraints (Indices N+1 to 2N)
+        for r in range(N):
+            line_idx = N + 1 + r
+            h_vals = [int(x.strip()) for x in lines[line_idx].split(',')]
+            if len(h_vals) != N - 1:
+                raise ValueError(f"Horizontal constraint row {r} should have {N-1} values, found {len(h_vals)}")
+
+            for c, val in enumerate(h_vals):
+                if val == 1:
+                    constraints.append((r, c, '<', r, c + 1))
+                elif val == -1:
+                    constraints.append((r, c, '>', r, c + 1))
+
+        # 4. Parse Vertical Constraints (Indices 2N+1 to 3N-1)
+        for r in range(N - 1):
+            line_idx = 2 * N + 1 + r
+            v_vals = [int(x.strip()) for x in lines[line_idx].split(',')]
+            if len(v_vals) != N:
+                raise ValueError(f"Vertical constraint row {r} should have {N} values, found {len(v_vals)}")
+
+            for c, val in enumerate(v_vals):
+                if val == 1:
+                    constraints.append((r, c, '<', r + 1, c))
+                elif val == -1:
+                    constraints.append((r, c, '>', r + 1, c))
+
+        # Freeze structures into immutable tuples
+        initial_board = tuple(initial_board)
+        constraints = tuple(constraints)
+
+        initial_state = State(initial_board, None)
+        board = Board(N, initial_state, constraints)
+
+        return board, initial_state
+
+    except ValueError as e:
+        raise ValueError(f"Error parsing puzzle format: {e}")
+    except IndexError:
+        raise ValueError("File is missing required constraint lines.")
 
 def save_solution(board: Tuple[Tuple[int, ...], ...], filename: str) -> None:
-    """Save a solved board to a file.
-    
-    Args:
-        board: Solved board as tuple of tuples
-        filename: Path to output file
-    """
+    """Save a solved board to a file."""
     with open(filename, 'w') as f:
         for row in board:
             f.write(' '.join(map(str, row)) + '\n')
 
-
 def format_board(board: Tuple[Tuple[int, ...], ...], title: str = "Board") -> str:
-    """Format a board for pretty printing.
-    
-    Args:
-        board: Board as tuple of tuples
-        title: Optional title for the board
-        
-    Returns:
-        Formatted board string
-    """
+    """Format a board for pretty printing."""
     N = len(board)
     lines = [f"\n{title}:"]
     lines.append("+" + "-" * 3 * N + "+")
-    
+
     for row in board:
         row_str = "|" + "|".join(str(x) if x != 0 else " " for x in row) + "|"
         lines.append(row_str)
-    
+
     lines.append("+" + "-" * 3 * N + "+")
     return '\n'.join(lines)
