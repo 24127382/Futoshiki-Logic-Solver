@@ -1,0 +1,41 @@
+# Development Dependencies for Futoshiki Solver
+# Install with: pip install -r requirements-dev.txt
+
+# Testing and Coverage
+pytest>=7.0              # Testing framework
+pytest-cov>=4.0          # Code coverage for pytest
+coverage>=7.0            # Code coverage tool
+
+# Code Quality
+black>=23.0              # Code formatter
+flake8>=6.0              # Linter
+pylint>=2.17             # Code analyzer
+mypy>=1.0                # Static type checker
+
+# Documentation
+sphinx>=5.0              # Documentation generator (optional)
+
+# Development Tools
+ipython>=8.0             # Enhanced Python shell
+jupyter>=1.0             # Jupyter notebooks for experimentation
+
+# Optional Dependencies for Futoshiki Solver
+# These are optional and only needed for specific features
+# Install with: pip install -r requirements-optional.txt
+
+# SAT Solver Integrations
+z3-solver>=4.12          # Microsoft Z3 satisfiability solver
+python-sat>=0.1.7       # Unified Python interface for SAT solvers
+pysmt>=0.9.5            # Rapid prototyping of SMT solvers
+
+# GUI Framework (if not using tkinter)
+PyQt6>=6.0              # PyQt GUI framework (optional alternative)
+PySimpleGUI>=4.60       # Simple GUI library (optional alternative)
+
+# Performance & Optimization
+numpy>=1.21             # Numerical computing (for heuristics)
+scipy>=1.7              # Scientific computing
+
+# Visualization & Analysis
+matplotlib>=3.5         # Plotting library
+seaborn>=0.12           # Statistical data visualization
