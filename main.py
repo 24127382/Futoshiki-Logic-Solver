@@ -4,8 +4,10 @@ from src.utils.parser import load_puzzle_file, save_solution, format_board
 
 # Import solvers
 from src.solvers.backtracking import BacktrackingSolver
+from src.solvers.forward_chaining import forward_chaining_solver
+from src.models.kb import KnowledgeBase
+from src.logic.grounding import ground_axioms
 # from src.solvers.a_star import AStarSolver
-# from src.solvers.forward_chaining import ForwardChainingSolver
 
 def main():
     parser = argparse.ArgumentParser(description="Futoshiki Solver AI Sandbox")
@@ -29,18 +31,30 @@ def main():
     # 2. Select and initialize the solver
     if args.solver == 'backtracking':
         solver = BacktrackingSolver()
+        print(f"\nSolving with {args.solver}...")
+        solution_grid = solver.solve(board)
+        solve_time = solver.solve_time
+        nodes_visited = solver.nodes_visited
+        
+    elif args.solver == 'forward_chaining':
+        print(f"\nSolving with {args.solver}...")
+        kb = KnowledgeBase(board.N)
+        print("Grounding axioms...")
+        ground_axioms(kb, board)
+        solution_state = forward_chaining_solver(initial_state, kb)
+        solution_grid = solution_state.board if solution_state else None
+        solve_time = 0.0  # Forward chaining doesn't track timing
+        nodes_visited = 0
+        
     else:
         print(f"Solver '{args.solver}' is not yet implemented.")
         return
 
-    # 3. Solve the puzzle
-    print(f"\nSolving with {args.solver}...")
-    solution_grid = solver.solve(board)
-
-    # 4. Handle Output
+    # 3. Handle Output
     if solution_grid:
-        print(f"\nSolution found in {solver.solve_time:.4f} seconds!")
-        print(f"Nodes visited: {solver.nodes_visited}")
+        print(f"\nSolution found in {solve_time:.4f} seconds!")
+        if nodes_visited > 0:
+            print(f"Nodes visited: {nodes_visited}")
 
         if args.verbose:
             print(format_board(solution_grid, title="Solved State"))

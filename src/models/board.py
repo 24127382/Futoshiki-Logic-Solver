@@ -10,17 +10,19 @@ class Board:
     Attributes:
         N: Size of the board (N x N grid)
         initial_state: Starting state of the board
-        constraints: Tuple of inequality constraints (row, col, operator)
+        constraints: Tuple of inequality constraints (r1, c1, operator, r2, c2)
+                    where (r1, c1) and (r2, c2) are adjacent cells (0-indexed)
     """
     
-    def __init__(self, N: int, initial_state: State, constraints: Tuple[Tuple[int, int, str], ...]) -> None:
+    def __init__(self, N: int, initial_state: State, constraints: Tuple[Tuple[int, int, str, int, int], ...]) -> None:
         """Initialize a Futoshiki board.
         
         Args:
             N: Board size (N x N)
             initial_state: Starting board state
-            constraints: Inequality constraints as (row, col, operator) tuples
-                        operator can be '<', '>', '<=', or '>='
+            constraints: Inequality constraints as (r1, c1, operator, r2, c2) tuples
+                        Format: (row1, col1, operator, row2, col2) where cells are 0-indexed
+                        operator: '<' means cell(r1,c1) < cell(r2,c2), '>' means cell(r1,c1) > cell(r2,c2)
         
         Raises:
             ValueError: If N is not positive or constraints are invalid
