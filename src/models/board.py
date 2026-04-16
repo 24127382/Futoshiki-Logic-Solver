@@ -1,7 +1,12 @@
 
 """Board representation for Futoshiki puzzles."""
-from typing import Tuple
+from typing import Tuple, Union
 from src.models.state import State
+
+
+Constraint3 = Tuple[int, int, str]
+Constraint5 = Tuple[int, int, str, int, int]
+Constraint = Union[Constraint3, Constraint5]
 
 
 class Board:
@@ -10,17 +15,19 @@ class Board:
     Attributes:
         N: Size of the board (N x N grid)
         initial_state: Starting state of the board
-        constraints: Tuple of inequality constraints (row, col, operator)
+        constraints: Tuple of inequality constraints
     """
     
-    def __init__(self, N: int, initial_state: State, constraints: Tuple[Tuple[int, int, str], ...]) -> None:
+    def __init__(self, N: int, initial_state: State, constraints: Tuple[Constraint, ...]) -> None:
         """Initialize a Futoshiki board.
         
         Args:
             N: Board size (N x N)
             initial_state: Starting board state
-            constraints: Inequality constraints as (row, col, operator) tuples
-                        operator can be '<', '>', '<=', or '>='
+            constraints: Inequality constraints in one of two forms:
+                        - Legacy: (row, col, operator)
+                        - Canonical: (row1, col1, operator, row2, col2)
+                        operator can be '<' or '>'
         
         Raises:
             ValueError: If N is not positive or constraints are invalid

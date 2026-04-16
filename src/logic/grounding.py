@@ -107,15 +107,45 @@ def ground_inequality_constraints(kb: KnowledgeBase, board: Board) -> None:
     # Separate constraints into horizontal and vertical
     h_constraints = []
     v_constraints = []
-    
+
     for constraint in board.constraints:
-        # Assuming constraint format: (row, col, operator)
-        # where row,col is the position of the left/top cell
-        r, c, op = constraint
-        if op in ['<', '>']:  # Horizontal constraints would be adjacent columns
-            # This needs clarification based on how constraints are parsed
-            # For now, assuming they're already separated or will be
-            pass
+        if len(constraint) == 3:
+            # Legacy format: (row, col, op) means horizontal: (r,c) op (r,c+1)
+            r, c, op = constraint
+            if not (1 <= r <= kb.N and 1 <= c < kb.N):
+                raise ValueError(
+                    f"Invalid legacy inequality constraint {constraint} for board size {kb.N}"
+                )
+            h_constraints.append((r, c, op))
+            continue
+
+        if len(constraint) != 5:
+            raise ValueError(
+                "Inequality constraints must be (r,c,op) or (r1,c1,op,r2,c2) tuples"
+            )
+
+        r1, c1, op, r2, c2 = constraint
+        if op not in ['<', '>']:
+            raise ValueError(f"Invalid inequality operator '{op}' in constraint {constraint}")
+
+        if abs(r1 - r2) + abs(c1 - c2) != 1:
+            raise ValueError(f"Constraint cells must be adjacent: {constraint}")
+
+        # Normalize to left->right or top->bottom orientation expected by inequality_clauses.
+        if r1 == r2:
+            if c1 < c2:
+                h_constraints.append((r1, c1, op))
+            else:
+                flipped_op = '<' if op == '>' else '>'
+                h_constraints.append((r2, c2, flipped_op))
+        elif c1 == c2:
+            if r1 < r2:
+                v_constraints.append((r1, c1, op))
+            else:
+                flipped_op = '<' if op == '>' else '>'
+                v_constraints.append((r2, c2, flipped_op))
+        else:
+            raise ValueError(f"Unsupported constraint orientation: {constraint}")
     
     # Generate and add inequality clauses
     ineq_clauses = inequality_clauses(kb, h_constraints, v_constraints)

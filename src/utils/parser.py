@@ -1,9 +1,9 @@
 """Parser for Futoshiki puzzle input files.
 
-Supports multiple input formats for puzzle definitions.
+Supports both legacy and canonical constraint formats.
 """
 
-from typing import Tuple, List
+from typing import List, Optional, Sequence, Tuple
 from src.models.state import State
 from src.models.board import Board
 
@@ -15,9 +15,13 @@ def load_puzzle_file(filename: str) -> Tuple[Board, State]:
     Line 1: N (board size)
     Lines 2 to N+1: Initial board state (N space-separated integers per line)
                     0 = empty cell, 1-N = given value
-    Last line: Constraints (optional)
-               Format: row col op row col op ...
-               where op is '<' or '>'
+     Last line: Constraints (optional)
+                    Supported formats:
+                    1) Legacy triplets: row col op row col op ...
+                        Interpreted as horizontal constraints from (row, col) to (row, col+1)
+                    2) Canonical quintuplets: r1 c1 op r2 c2 ...
+                        Explicitly defines both cells in each inequality
+                    where op is '<' or '>'
     
     Args:
         filename: Path to puzzle file
@@ -80,34 +84,80 @@ def load_puzzle_file(filename: str) -> Tuple[Board, State]:
     return board, initial_state
 
 
-def parse_constraints(constraint_str: str, N: int) -> Tuple[Tuple[int, int, str], ...]:
+def parse_constraints(constraint_str: str, N: int) -> Tuple[Tuple[int, int, str, int, int], ...]:
     """Parse constraint string into constraint tuples.
     
-    **Format:** row col op row col op ...
-    where op is '<' or '>'
-    
-    Example: "0 0 < 0 1 < 1 0 >" means:
-    - cell[0][0] < cell[0][1]
-    - cell[0][1] < cell[1][0]
-    - cell[1][0] > (implicit right cell)
+        **Supported Formats:**
+        - Legacy: row col op row col op ...
+            Each triplet means (row, col) op (row, col+1)
+        - Canonical: r1 c1 op r2 c2 ...
+            Each quintuplet means (r1, c1) op (r2, c2)
     
     Args:
         constraint_str: Space-separated constraint specification
         N: Board size for validation
         
     Returns:
-        Tuple of (row, col, operator) tuples
+        Tuple of canonical (r1, c1, operator, r2, c2) tuples, 1-indexed
         
     Raises:
         ValueError: If constraint format is invalid
     """
     if not constraint_str:
         return ()
-    
+
     parts = constraint_str.split()
-    if len(parts) % 3 != 0:
-        raise ValueError(f"Constraints must be triplets (row col op), got {len(parts)} parts")
-    
+
+    # Prefer canonical parsing when possible.
+    if len(parts) % 5 == 0:
+        constraints = _parse_constraints_quintuplets(parts, N)
+        if constraints is not None:
+            return tuple(constraints)
+
+    if len(parts) % 3 == 0:
+        return tuple(_parse_constraints_legacy_triplets(parts, N))
+
+    raise ValueError(
+        f"Invalid constraints format with {len(parts)} tokens. "
+        "Use legacy triplets (row col op) or canonical quintuplets (r1 c1 op r2 c2)."
+    )
+
+
+def _parse_constraints_quintuplets(
+    parts: Sequence[str], N: int
+) -> Optional[List[Tuple[int, int, str, int, int]]]:
+    constraints = []
+    for i in range(0, len(parts), 5):
+        try:
+            r1 = int(parts[i])
+            c1 = int(parts[i + 1])
+            op = parts[i + 2]
+            r2 = int(parts[i + 3])
+            c2 = int(parts[i + 4])
+        except ValueError:
+            return None
+
+        if op not in ['<', '>']:
+            return None
+
+        if not (0 <= r1 < N and 0 <= c1 < N and 0 <= r2 < N and 0 <= c2 < N):
+            raise ValueError(
+                f"Constraint positions ({r1}, {c1}) and ({r2}, {c2}) out of bounds for {N}x{N} board"
+            )
+
+        if abs(r1 - r2) + abs(c1 - c2) != 1:
+            raise ValueError(
+                f"Constraint cells must be adjacent, got ({r1}, {c1}) and ({r2}, {c2})"
+            )
+
+        constraints.append((r1 + 1, c1 + 1, op, r2 + 1, c2 + 1))
+
+    return constraints
+
+
+def _parse_constraints_legacy_triplets(
+    parts: Sequence[str], N: int
+) -> List[Tuple[int, int, str, int, int]]:
     constraints = []
     for i in range(0, len(parts), 3):
         try:
@@ -115,18 +165,28 @@ def parse_constraints(constraint_str: str, N: int) -> Tuple[Tuple[int, int, str]
             c = int(parts[i + 1])
             op = parts[i + 2]
         except ValueError:
-            raise ValueError(f"Invalid constraint at position {i}: expected (row col op)")
-        
+            raise ValueError(f"Invalid legacy constraint at token {i}: expected (row col op)")
+
         if not (0 <= r < N and 0 <= c < N):
             raise ValueError(f"Constraint position ({r}, {c}) out of bounds for {N}x{N} board")
-        
+
         if op not in ['<', '>']:
             raise ValueError(f"Invalid operator '{op}', must be '<' or '>'")
-        
-        # Convert to 1-indexed for internal representation
-        constraints.append((r + 1, c + 1, op))
-    
-    return tuple(constraints)
+
+        # Legacy format inference:
+        # - Prefer horizontal: (r,c) op (r,c+1)
+        # - Fallback to vertical when horizontal is impossible: (r,c) op (r+1,c)
+        if c + 1 < N:
+            constraints.append((r + 1, c + 1, op, r + 1, c + 2))
+        elif r + 1 < N:
+            constraints.append((r + 1, c + 1, op, r + 2, c + 1))
+        else:
+            raise ValueError(
+                f"Legacy triplet constraint ({r}, {c}, {op}) has no adjacent neighbor to infer. "
+                "Use canonical format: r1 c1 op r2 c2"
+            )
+
+    return constraints
 
 
 def save_solution(board: Tuple[Tuple[int, ...], ...], filename: str) -> None:
