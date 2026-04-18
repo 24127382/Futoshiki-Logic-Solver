@@ -28,7 +28,9 @@ z3-solver>=4.12          # Microsoft Z3 satisfiability solver
 python-sat>=0.1.7       # Unified Python interface for SAT solvers
 pysmt>=0.9.5            # Rapid prototyping of SMT solvers
 
-# GUI Framework (if not using tkinter)
+# GUI Framework
+customtkinter>=5.0      # Modern tkinter wrapper (primary GUI)
+reflex>=0.1.0           # Reflex web framework for GUI
 PyQt6>=6.0              # PyQt GUI framework (optional alternative)
 PySimpleGUI>=4.60       # Simple GUI library (optional alternative)
 

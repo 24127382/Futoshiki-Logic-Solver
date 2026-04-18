@@ -1,5 +1,28 @@
+"""
+Futoshiki Solver - Main Entry Point
+====================================
+Supports two modes:
+1. GUI mode (default): Launch tkinter GUI for interactive solving
+2. CLI mode (--cli flag): Run puzzles from command line
+
+Usage:
+    python main.py                          # Launch GUI
+    python main.py --cli --input puzzle.txt --solver backtracking
+"""
+
 import argparse
 import os
+import sys
+from pathlib import Path
+
+# Add src/ and gui/ to path
+src_path = str(Path(__file__).parent / "src")
+gui_path = str(Path(__file__).parent / "gui")
+if src_path not in sys.path:
+    sys.path.insert(0, src_path)
+if gui_path not in sys.path:
+    sys.path.insert(0, gui_path)
+
 from src.utils.parser import load_puzzle_file, save_solution, format_board
 
 # Import solvers
@@ -9,7 +32,16 @@ from src.models.kb import KnowledgeBase
 from src.logic.grounding import ground_axioms
 # from src.solvers.a_star import AStarSolver
 
-def main():
+
+def main_gui():
+    """Launch the tkinter GUI application."""
+    from gui.app import FutoshikiApp
+    app = FutoshikiApp()
+    app.run()
+
+
+def main_cli():
+    """Run CLI mode (backward compatible with original main.py)."""
     parser = argparse.ArgumentParser(description="Futoshiki Solver AI Sandbox")
     parser.add_argument("--input", type=str, required=True, help="Path to input puzzle file")
     parser.add_argument("--solver", type=str, required=True, choices=['backtracking', 'a_star', 'forward_chaining', 'backward_chaining'], help="Solver algorithm to use")
@@ -72,6 +104,25 @@ def main():
         print(f"Solution saved to {output_path}")
     else:
         print("\nNo solution exists for this puzzle.")
+
+
+def main():
+    """
+    Main entry point dispatcher.
+    
+    Checks for --cli flag:
+    - With --cli: Run in CLI mode (original behavior)
+    - Without --cli: Launch tkinter GUI
+    """
+    # Check if --cli flag is present
+    if '--cli' in sys.argv:
+        # Remove --cli from argv so argparse doesn't complain
+        sys.argv.remove('--cli')
+        main_cli()
+    else:
+        # Launch GUI mode
+        main_gui()
+
 
 if __name__ == "__main__":
     main()
