@@ -1,32 +1,67 @@
 import time
 from typing import Tuple, List, Optional, Any
+import threading
+
+from gui.bridge import InputData, OutputData
 
 class BacktrackingSolver:
     """
-    Standard backtracking solver for Futoshiki puzzles.
+    Standard backtracking solver adapted for the GUI.
     """
 
-    def __init__(self):
+    def __init__(self, timeout: float = 30.0):
+        self.timeout = timeout
         self.nodes_visited = 0
-        self.solve_time = 0.0
+        self.start_time = 0.0
 
-    def solve(self, board: Any) -> Optional[Tuple[Tuple[int, ...], ...]]:
+    def solve(self, input_data: InputData, stop_event: threading.Event = None) -> OutputData:
         self.nodes_visited = 0
-        start_time = time.time()
+        self.start_time = time.time()
 
-        # Convert immutable tuple grid to a mutable list of lists
-        working_grid = [list(row) for row in board.initial_state.board]
+        N = input_data.size
+        # Convert GUI matrix to mutable list of lists
+        working_grid = [list(row) for row in input_data.matrix]
+
+        # Convert GUI constraints: ((r1, c1), (r2, c2), op) -> (r1, c1, op, r2, c2)
+        constraints = []
+        for (r1, c1), (r2, c2), op in input_data.constraints:
+            constraints.append((r1, c1, op, r2, c2))
+        constraints_tuple = tuple(constraints)
 
         # Run standard backtracking
-        if self._backtrack(working_grid, board.N, board.constraints):
-            self.solve_time = time.time() - start_time
-            # Return as tuple of tuples for output formatting
-            return tuple(tuple(row) for row in working_grid)
+        success = self._backtrack(working_grid, N, constraints_tuple, stop_event)
 
-        self.solve_time = time.time() - start_time
-        return None
+        solve_time_ms = (time.time() - self.start_time) * 1000
 
-    def _backtrack(self, grid: List[List[int]], N: int, constraints: Tuple) -> bool:
+        # Handle cancellation/timeout
+        if stop_event and stop_event.is_set():
+            return OutputData(
+                status='timeout',
+                solution=None,
+                stats={'time_ms': round(solve_time_ms, 2), 'nodes_visited': self.nodes_visited},
+                message="Solver timed out or was cancelled."
+            )
+
+        # Handle normal completion
+        status = 'success' if success else 'unsolvable'
+        message = 'Puzzle solved successfully' if success else 'No solution exists.'
+
+        return OutputData(
+            status=status,
+            solution=working_grid if success else None,
+            stats={
+                'time_ms': round(solve_time_ms, 2),
+                'nodes_visited': self.nodes_visited,
+                'algorithm': 'Backtracking'
+            },
+            message=message
+        )
+
+    def _backtrack(self, grid: List[List[int]], N: int, constraints: Tuple, stop_event: threading.Event) -> bool:
+        # Periodic check for cancellation to keep the algorithm fast but responsive
+        if self.nodes_visited % 1000 == 0 and stop_event and stop_event.is_set():
+            return False
+
         self.nodes_visited += 1
 
         # Find next empty cell
@@ -41,7 +76,7 @@ class BacktrackingSolver:
             if self._is_valid(grid, N, constraints, r, c, val):
                 grid[r][c] = val
 
-                if self._backtrack(grid, N, constraints):
+                if self._backtrack(grid, N, constraints, stop_event):
                     return True
 
                 grid[r][c] = 0 # Undo
@@ -57,13 +92,10 @@ class BacktrackingSolver:
 
     def _is_valid(self, grid: List[List[int]], N: int, constraints: Tuple, r: int, c: int, val: int) -> bool:
         # Check Row
-        if val in grid[r]:
-            return False
-
+        if val in grid[r]: return False
         # Check Column
         for i in range(N):
-            if grid[i][c] == val:
-                return False
+            if grid[i][c] == val: return False
 
         # Check Inequalities
         grid[r][c] = val
@@ -73,21 +105,12 @@ class BacktrackingSolver:
         return valid
 
     def _check_inequalities(self, grid: List[List[int]], constraints: Tuple, current_r: int, current_c: int) -> bool:
-        """
-        Evaluates horizontal and vertical inequalities.
-        Constraints are expected in (r1, c1, op, r2, c2) format.
-        """
         for constraint in constraints:
             r1, c1, op, r2, c2 = constraint
-
-            # Only test if our current placement touches this rule
             if (current_r == r1 and current_c == c1) or (current_r == r2 and current_c == c2):
                 val1 = grid[r1][c1]
                 val2 = grid[r2][c2]
-
-                # Enforce rule only when BOTH cells have numbers
                 if val1 != 0 and val2 != 0:
                     if op == '<' and not (val1 < val2): return False
                     if op == '>' and not (val1 > val2): return False
-
         return True
