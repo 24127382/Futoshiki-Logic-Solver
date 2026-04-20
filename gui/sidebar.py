@@ -4,7 +4,7 @@ Sidebar Module: Controls, stats, and actions
 Left-hand control panel for the Futoshiki app. Contains:
 - Brand header
 - Grid size picker (4..9)
-- Algorithm picker (Backtracking / Forward Chaining / A*)
+- Algorithm picker (Backtracking / Forward Chaining / Backward Chaining / A*)
 - Timeout slider
 - Primary actions (Solve, Stop, Clear, Reset)
 - File I/O (Load / Save)
@@ -25,6 +25,7 @@ from gui.theme import Palette, Typography, Spacing, Radii
 class SolverType(str, Enum):
     BACKTRACKING = "Backtracking"
     FORWARD_CHAINING = "Forward Chaining"
+    BACKWARD_CHAINING = "Backward Chaining"
     A_STAR = "A*"
 
 
@@ -161,6 +162,7 @@ class Sidebar(ctk.CTkFrame):
 
         options = [
             (SolverType.FORWARD_CHAINING.value, "Unit propagation over CNF (fast)"),
+            (SolverType.BACKWARD_CHAINING.value, "DPLL-style SAT search on CNF"),
             (SolverType.BACKTRACKING.value, "Classic DFS with constraint checks"),
             (SolverType.A_STAR.value, "Heuristic search (experimental)"),
         ]

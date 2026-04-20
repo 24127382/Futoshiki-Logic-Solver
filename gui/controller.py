@@ -26,6 +26,7 @@ for p in (_ROOT, _ROOT / "src"):
 class SolverType(str, Enum):
     BACKTRACKING = "Backtracking"
     FORWARD_CHAINING = "Forward Chaining"
+    BACKWARD_CHAINING = "Backward Chaining"
     A_STAR = "A*"
 
 
@@ -126,6 +127,10 @@ class FutoshikiController:
                         solution, nodes = self._run_forward_chaining(board)
                         container["nodes"] = nodes
                         container["out"] = solution
+                    elif algorithm == SolverType.BACKWARD_CHAINING.value:
+                        solution, nodes = self._run_backward_chaining(board)
+                        container["nodes"] = nodes
+                        container["out"] = solution
                     elif algorithm == SolverType.A_STAR.value:
                         solution, nodes = self._run_a_star(board)
                         container["nodes"] = nodes
@@ -214,6 +219,20 @@ class FutoshikiController:
         ground_axioms(kb, board)
         initial_state = board.initial_state
         state = forward_chaining_solver(initial_state, kb)
+        nodes = len(kb.clauses)
+        if state is None:
+            return None, nodes
+        return state.board, nodes
+
+    def _run_backward_chaining(self, board):
+        from src.models.kb import KnowledgeBase
+        from src.logic.grounding import ground_axioms
+        from src.solvers.backward_chaining import backward_chaining_solver
+
+        kb = KnowledgeBase(board.N)
+        ground_axioms(kb, board)
+        initial_state = board.initial_state
+        state = backward_chaining_solver(initial_state, kb)
         nodes = len(kb.clauses)
         if state is None:
             return None, nodes
