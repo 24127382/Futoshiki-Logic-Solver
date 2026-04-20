@@ -28,6 +28,7 @@ from src.utils.parser import load_puzzle_file, save_solution, format_board
 # Import solvers
 from src.solvers.backtracking import BacktrackingSolver
 from src.solvers.forward_chaining import forward_chaining_solver
+from src.solvers.backward_chaining import backward_chaining_solver
 from src.models.kb import KnowledgeBase
 from src.logic.grounding import ground_axioms
 # from src.solvers.a_star import AStarSolver
@@ -85,8 +86,14 @@ def main_cli():
         solve_time = 0
         nodes_visited = 0
     elif args.solver == 'backward_chaining':
-        print(f"Solver '{args.solver}' is not yet implemented.")
-        return
+        print(f"\nSolving with {args.solver}...")
+        kb = KnowledgeBase(board.N)
+        ground_axioms(kb, board)
+        print(f"\nGrounded clauses: {len(kb.clauses)}")
+        solution_state = backward_chaining_solver(initial_state, kb)
+        solution_grid = solution_state.board if solution_state else None
+        solve_time = 0
+        nodes_visited = 0
     else:
         print(f"Solver '{args.solver}' is not yet implemented.")
         return

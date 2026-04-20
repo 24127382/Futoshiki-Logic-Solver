@@ -1,284 +1,384 @@
 """
-Controller Module: GUI ↔ Solver Communication Hub
-===================================================
-This module mediates between the tkinter GUI and the solver algorithms.
-
-Design Pattern: MVC (Model-View-Controller)
-- Model: Board state (in src/models/)
-- View: tkinter GUI components
-- Controller: This file - handles events and coordinates data flow
-
-Flow:
-1. User clicks "Solve" button → GUI calls controller.handle_solve_request()
-2. Controller converts GUI data via Bridge
-3. Controller calls appropriate solver from src/solvers/
-4. Controller passes result back to GUI for rendering
-5. GUI updates display
+Controller Module: GUI <-> Solver Communication Hub
+=====================================================
+Coordinates everything that sits between the user clicking buttons and
+the solvers in ``src/solvers``. Runs solves in a background thread so the
+UI stays responsive, and reports progress via a ``update_callback``.
 """
 
-import asyncio
+from __future__ import annotations
+
+import sys
 import threading
 import time
-from typing import Dict, List, Callable, Optional, Tuple
+from dataclasses import dataclass
 from enum import Enum
-import sys
 from pathlib import Path
+from typing import Callable, Dict, List, Optional, Tuple
 
-# Add src/ to path
-src_path = str(Path(__file__).parent.parent / "src")
-if src_path not in sys.path:
-    sys.path.insert(0, src_path)
-
-from gui.bridge import FutoshikiBridge, InputData, OutputData
-
-
-# ============================================================================
-# ENUMS & TYPES
-# ============================================================================
-
-class SolverType(Enum):
-    """Available solver algorithms."""
-    BACKTRACKING = "backtracking"
-    FORWARD_CHAINING = "forward_chaining"
-    A_STAR = "a_star"
+_ROOT = Path(__file__).parent.parent
+for p in (_ROOT, _ROOT / "src"):
+    p_str = str(p)
+    if p_str not in sys.path:
+        sys.path.insert(0, p_str)
 
 
-class SolveStatus(Enum):
-    """Status of a solve operation."""
+class SolverType(str, Enum):
+    BACKTRACKING = "Backtracking"
+    FORWARD_CHAINING = "Forward Chaining"
+    A_STAR = "A*"
+
+
+class SolveStatus(str, Enum):
     IDLE = "idle"
     SOLVING = "solving"
     SUCCESS = "success"
     UNSOLVABLE = "unsolvable"
     ERROR = "error"
     TIMEOUT = "timeout"
+    CANCELLED = "cancelled"
 
 
-# ============================================================================
-# CONTROLLER CLASS
-# ============================================================================
+@dataclass
+class SolveResult:
+    status: SolveStatus
+    solution: Optional[List[List[int]]] = None
+    elapsed: float = 0.0
+    nodes: int = 0
+    message: str = ""
+
 
 class FutoshikiController:
-    """
-    Main controller for orchestrating solve requests.
-    
-    Responsibilities:
-    1. Listen for UI events (buttons, file selection)
-    2. Validate input data
-    3. Call appropriate solver algorithm
-    4. Handle async execution (non-blocking UI)
-    5. Pass results back to GUI for rendering
-    """
+    """Mediates between the GUI and the solver algorithms."""
 
-    def __init__(self, update_callback: Callable = None):
-        """
-        Initialize the controller.
-        
-        Args:
-            update_callback: Function to call when state changes.
-                           Signature: update_callback(status, data)
-        """
-        self.bridge = FutoshikiBridge()
-        self.update_callback = update_callback or self._default_callback
-        
-        # State
-        self.current_status = SolveStatus.IDLE
-        self.last_result = None
-        self.solver_thread = None
-        self.is_solving = False
-        self.timeout_seconds = 30
+    def __init__(self, update_callback=None) -> None:
+        self.update_callback = update_callback or (lambda s, d: None)
+        self.timeout_seconds: int = 30
+        self.is_solving: bool = False
+        self._cancel_flag = threading.Event()
+        self._solver_thread = None
+        self.last_result: Optional[SolveResult] = None
 
-    def _default_callback(self, status: str, data: Dict = None):
-        """Default callback if none provided."""
-        print(f"[Controller] Status: {status}, Data: {data}")
+    def set_timeout(self, seconds: int) -> None:
+        if seconds > 0:
+            self.timeout_seconds = seconds
 
-    # ========================================================================
-    # PRIMARY EVENT HANDLERS (What GUI calls)
-    # ========================================================================
+    def cancel_solve(self) -> None:
+        self._cancel_flag.set()
 
     def handle_solve_request(
         self,
         gui_matrix: List[List[str]],
         gui_constraints: Dict[str, str],
         size: int,
-        algorithm: SolverType = SolverType.BACKTRACKING
+        algorithm: str,
     ) -> None:
-        """
-        Handle a "Solve" button click from the GUI.
-        Runs in a background thread to keep UI responsive.
-        
-        Args:
-            gui_matrix: 2D list of cell values from GUI (strings)
-            gui_constraints: Dict of constraints from GUI
-            size: Grid size (4-9)
-            algorithm: Which solver to use
-        
-        Callback Flow:
-        1. Calls update_callback('solving', {})
-        2. ... (solver runs) ...
-        3. Calls update_callback('success'/'error', result)
-        
-        TODO: Algorithm Team
-        - Implement solver selection logic
-        - Map SolverType enum to actual solver imports from src/solvers/
-        - Handle solver timeouts gracefully
-        """
-        # Prevent multiple simultaneous solve requests
         if self.is_solving:
-            self.update_callback('error', {
-                'message': 'Already solving. Please wait.'
-            })
+            self.update_callback("error", {"message": "Solver is already running."})
             return
 
-        # Start solving in background thread
-        self.is_solving = True
-        self.current_status = SolveStatus.SOLVING
-        self.update_callback('solving', {})
+        try:
+            matrix = self._gui_to_int_matrix(gui_matrix, size)
+        except ValueError as e:
+            self.update_callback("error", {"message": "Invalid cell value: " + str(e)})
+            return
 
-        # Run in thread
+        constraints = self._gui_to_constraints(gui_constraints)
+
+        conflicts = self._find_conflicts(matrix, constraints, size)
+        if conflicts:
+            self.update_callback(
+                "error",
+                {
+                    "message": "Initial grid violates row/column/inequality rules.",
+                    "conflict_cells": conflicts,
+                },
+            )
+            return
+
+        self.is_solving = True
+        self._cancel_flag.clear()
+        self.update_callback("solving", {"algorithm": algorithm})
+
         thread = threading.Thread(
             target=self._solve_worker,
-            args=(gui_matrix, gui_constraints, size, algorithm),
-            daemon=True
+            args=(matrix, constraints, size, algorithm),
+            daemon=True,
         )
+        self._solver_thread = thread
         thread.start()
-        self.solver_thread = thread
 
-    def _solve_worker(
-        self,
-        gui_matrix: List[List[str]],
-        gui_constraints: Dict[str, str],
-        size: int,
-        algorithm: SolverType
-    ) -> None:
-        """
-        Background thread worker that performs the actual solve.
-        Never call this directly - use handle_solve_request().
-        """
+    def _solve_worker(self, matrix, constraints, size, algorithm) -> None:
+        start = time.time()
+        result: SolveResult
+
         try:
-            # Step 1: Convert GUI data to solver format
-            input_data = self.bridge.ui_to_logic(
-                gui_matrix, gui_constraints, size
+            board = self._build_board(matrix, constraints, size)
+            container = {"done": False, "out": None, "error": None, "nodes": 0}
+
+            def run():
+                try:
+                    if algorithm == SolverType.BACKTRACKING.value:
+                        solver, solution = self._run_backtracking(board)
+                        container["nodes"] = solver.nodes_visited
+                        container["out"] = solution
+                    elif algorithm == SolverType.FORWARD_CHAINING.value:
+                        solution, nodes = self._run_forward_chaining(board)
+                        container["nodes"] = nodes
+                        container["out"] = solution
+                    elif algorithm == SolverType.A_STAR.value:
+                        solution, nodes = self._run_a_star(board)
+                        container["nodes"] = nodes
+                        container["out"] = solution
+                    else:
+                        raise ValueError("Unknown algorithm: " + algorithm)
+                except Exception as e:
+                    container["error"] = e
+                finally:
+                    container["done"] = True
+
+            worker = threading.Thread(target=run, daemon=True)
+            worker.start()
+            deadline = start + self.timeout_seconds
+            while time.time() < deadline and not container["done"]:
+                if self._cancel_flag.is_set():
+                    break
+                time.sleep(0.05)
+
+            elapsed = time.time() - start
+
+            if self._cancel_flag.is_set():
+                result = SolveResult(SolveStatus.CANCELLED, elapsed=elapsed,
+                                     message="Cancelled by user.")
+            elif not container["done"]:
+                result = SolveResult(
+                    SolveStatus.TIMEOUT,
+                    elapsed=elapsed,
+                    message="Timed out after " + str(self.timeout_seconds) + "s.",
+                )
+            elif container["error"] is not None:
+                result = SolveResult(
+                    SolveStatus.ERROR,
+                    elapsed=elapsed,
+                    message=str(container["error"]),
+                )
+            elif container["out"] is None:
+                result = SolveResult(
+                    SolveStatus.UNSOLVABLE,
+                    elapsed=elapsed,
+                    nodes=container["nodes"],
+                    message="No solution found.",
+                )
+            else:
+                solution_list = self._to_matrix(container["out"])
+                result = SolveResult(
+                    SolveStatus.SUCCESS,
+                    solution=solution_list,
+                    elapsed=elapsed,
+                    nodes=container["nodes"],
+                    message="Solved successfully.",
+                )
+        except Exception as e:
+            result = SolveResult(
+                SolveStatus.ERROR,
+                elapsed=time.time() - start,
+                message=type(e).__name__ + ": " + str(e),
             )
 
-            # Step 2: Call the appropriate solver
-            # TODO: ALGORITHM TEAM - IMPLEMENT THIS
-            # The solver should:
-            # - Accept InputData
-            # - Return OutputData
-            # - Respect self.timeout_seconds
-            
-            output_data = self._call_solver(input_data, algorithm)
+        self.last_result = result
+        self.is_solving = False
 
-            # Step 3: Convert result back to GUI format
-            result_dict = self.bridge.logic_to_ui(output_data)
-            self.last_result = result_dict
-
-            # Step 4: Notify UI with result
-            if output_data.status == "success":
-                self.current_status = SolveStatus.SUCCESS
-                self.update_callback('success', result_dict)
-            else:
-                self.current_status = SolveStatus.UNSOLVABLE
-                self.update_callback('unsolvable', result_dict)
-
-        except Exception as e:
-            self.current_status = SolveStatus.ERROR
-            self.update_callback('error', {
-                'message': f'Error during solving: {str(e)}',
-                'error_type': type(e).__name__
-            })
-        finally:
-            self.is_solving = False
-
-    def _call_solver(
-        self,
-        input_data: InputData,
-        algorithm: SolverType
-    ) -> OutputData:
-        """
-        Call the appropriate solver algorithm.
-        
-        TODO: ALGORITHM TEAM - COMPLETE THIS FUNCTION
-        
-        Current skeleton:
-        - Check algorithm type
-        - Import the solver from src/solvers/
-        - Call solver.solve(input_data)
-        - Handle timeout
-        - Return OutputData
-        
-        Example implementation (pseudo-code):
-        ```python
-        if algorithm == SolverType.BACKTRACKING:
-            from src.solvers.backtracking import BacktrackingSolver
-            solver = BacktrackingSolver(timeout=self.timeout_seconds)
-            return solver.solve(input_data)
-        elif algorithm == SolverType.FORWARD_CHAINING:
-            from src.solvers.forward_chaining import ForwardChainingSolver
-            solver = ForwardChainingSolver(timeout=self.timeout_seconds)
-            return solver.solve(input_data)
-        ...
-        ```
-        """
-        # PLACEHOLDER - Replace with actual solver calls
-        return OutputData(
-            status='success',
-            solution=input_data.matrix,  # Just echo back for now
-            stats={'time_ms': 0, 'iterations': 0},
-            message='Placeholder - solver not implemented'
+        self.update_callback(
+            result.status.value,
+            {
+                "solution": result.solution,
+                "elapsed": result.elapsed,
+                "nodes": result.nodes,
+                "message": result.message,
+                "algorithm": algorithm,
+            },
         )
 
-    # ========================================================================
-    # UTILITY METHODS
-    # ========================================================================
+    def _run_backtracking(self, board):
+        from src.solvers.backtracking import BacktrackingSolver
+        solver = BacktrackingSolver()
+        solution = solver.solve(board)
+        return solver, solution
 
-    def get_current_status(self) -> str:
-        """Get current solve status as string."""
-        return self.current_status.value
+    def _run_forward_chaining(self, board):
+        from src.models.kb import KnowledgeBase
+        from src.logic.grounding import ground_axioms
+        from src.solvers.forward_chaining import forward_chaining_solver
 
-    def get_last_result(self) -> Optional[Dict]:
-        """Get the last solve result."""
-        return self.last_result
+        kb = KnowledgeBase(board.N)
+        ground_axioms(kb, board)
+        initial_state = board.initial_state
+        state = forward_chaining_solver(initial_state, kb)
+        nodes = len(kb.clauses)
+        if state is None:
+            return None, nodes
+        return state.board, nodes
 
-    def cancel_solve(self) -> None:
-        """Cancel the current solve operation (if possible)."""
-        # Note: Canceling a thread is tricky in Python
-        # For now, we just set a flag
-        self.is_solving = False
-        self.current_status = SolveStatus.IDLE
+    def _run_a_star(self, board):
+        try:
+            from src.solvers.a_star import a_star_solver
+        except ImportError as e:
+            raise RuntimeError("A* solver not available: " + str(e))
 
-    def set_timeout(self, seconds: int) -> None:
-        """Set solver timeout in seconds."""
-        if seconds > 0:
-            self.timeout_seconds = seconds
+        initial_state = board.initial_state
+        try:
+            state = a_star_solver(initial_state, board)
+        except TypeError:
+            state = a_star_solver(initial_state)
 
-    def load_puzzle_from_file(self, filepath: str) -> Tuple[List[List[str]], Dict[str, str], int]:
-        """
-        Load puzzle from a .txt file.
-        
-        Args:
-            filepath: Path to puzzle file
-        
-        Returns:
-            (gui_matrix, gui_constraints, size)
-        
-        TODO: Implement file parsing
-        - Use src/utils/parser.py to read the file
-        - Return data in GUI format
-        """
-        # PLACEHOLDER
-        return [], {}, 4
+        if state is None:
+            return None, 0
+        if hasattr(state, "board"):
+            return state.board, 0
+        return state, 0
 
-    # ========================================================================
-    # DEBUG & MONITORING
-    # ========================================================================
+    def _build_board(self, matrix, constraints, size):
+        from src.models.board import Board
+        from src.models.state import State
 
-    def get_debug_info(self) -> Dict:
-        """Get debug information about current state."""
-        return {
-            'status': self.current_status.value,
-            'is_solving': self.is_solving,
-            'last_result': self.last_result,
-            'timeout_seconds': self.timeout_seconds,
-            'thread_alive': self.solver_thread.is_alive() if self.solver_thread else False
-        }
+        board_tuple = tuple(tuple(row) for row in matrix)
+        initial_state = State(board_tuple, None)
+        cons_tuple = tuple(constraints)
+        return Board(size, initial_state, cons_tuple)
+
+    @staticmethod
+    def _gui_to_int_matrix(gui_matrix, size):
+        if len(gui_matrix) != size:
+            raise ValueError("Matrix has " + str(len(gui_matrix)) + " rows, expected " + str(size))
+        matrix = []
+        for r, row in enumerate(gui_matrix):
+            if len(row) != size:
+                raise ValueError("Row " + str(r) + " has " + str(len(row)) + " cells, expected " + str(size))
+            int_row = []
+            for c, cell in enumerate(row):
+                if cell == "":
+                    int_row.append(0)
+                else:
+                    try:
+                        v = int(cell)
+                    except ValueError:
+                        raise ValueError("cell (" + str(r) + "," + str(c) + ") = " + repr(cell))
+                    if not (1 <= v <= size):
+                        raise ValueError("cell (" + str(r) + "," + str(c) + ") = " + str(v) + " out of 1.." + str(size))
+                    int_row.append(v)
+            matrix.append(int_row)
+        return matrix
+
+    @staticmethod
+    def _gui_to_constraints(gui_constraints):
+        out = []
+        for key, sign in gui_constraints.items():
+            try:
+                left, right = key.split("-")
+                r1, c1 = map(int, left.strip("()").split(","))
+                r2, c2 = map(int, right.strip("()").split(","))
+            except (ValueError, IndexError):
+                continue
+            if sign not in ("<", ">"):
+                continue
+            out.append((r1, c1, sign, r2, c2))
+        return out
+
+    @staticmethod
+    def _to_matrix(board):
+        if hasattr(board, "board"):
+            board = board.board
+        return [list(row) for row in board]
+
+    @staticmethod
+    def _find_conflicts(matrix, constraints, size):
+        conflicts = set()
+
+        for r in range(size):
+            seen = {}
+            for c in range(size):
+                v = matrix[r][c]
+                if v == 0:
+                    continue
+                if v in seen:
+                    conflicts.add((r, c))
+                    conflicts.add((r, seen[v]))
+                else:
+                    seen[v] = c
+
+        for c in range(size):
+            seen = {}
+            for r in range(size):
+                v = matrix[r][c]
+                if v == 0:
+                    continue
+                if v in seen:
+                    conflicts.add((r, c))
+                    conflicts.add((seen[v], c))
+                else:
+                    seen[v] = r
+
+        for r1, c1, op, r2, c2 in constraints:
+            v1 = matrix[r1][c1]
+            v2 = matrix[r2][c2]
+            if v1 == 0 or v2 == 0:
+                continue
+            if (op == "<" and not (v1 < v2)) or (op == ">" and not (v1 > v2)):
+                conflicts.add((r1, c1))
+                conflicts.add((r2, c2))
+
+        return sorted(conflicts)
+
+    def load_puzzle_from_file(self, filepath):
+        from src.utils.parser import load_puzzle_file
+
+        board, state = load_puzzle_file(filepath)
+        size = board.N
+        matrix = [list(row) for row in state.board]
+
+        constraints_gui = {}
+        for (r1, c1, op, r2, c2) in board.constraints:
+            if (r1, c1) > (r2, c2):
+                r1, c1, r2, c2 = r2, c2, r1, c1
+                op = ">" if op == "<" else "<"
+            constraints_gui["(" + str(r1) + "," + str(c1) + ")-(" + str(r2) + "," + str(c2) + ")"] = op
+
+        return matrix, constraints_gui, size
+
+    def save_puzzle_to_file(self, filepath, matrix, constraints_gui, size):
+        lines = [str(size), ""]
+
+        for row in matrix:
+            lines.append(", ".join(str(v) for v in row))
+        lines.append("")
+
+        h_table = [[0] * (size - 1) for _ in range(size)]
+        v_table = [[0] * size for _ in range(size - 1)]
+
+        for key, sign in constraints_gui.items():
+            try:
+                left, right = key.split("-")
+                r1, c1 = map(int, left.strip("()").split(","))
+                r2, c2 = map(int, right.strip("()").split(","))
+            except (ValueError, IndexError):
+                continue
+
+            if r1 == r2:
+                if c1 > c2:
+                    r1, c1, r2, c2 = r2, c2, r1, c1
+                    sign = ">" if sign == "<" else "<"
+                h_table[r1][c1] = 1 if sign == "<" else -1
+            elif c1 == c2:
+                if r1 > r2:
+                    r1, c1, r2, c2 = r2, c2, r1, c1
+                    sign = ">" if sign == "<" else "<"
+                v_table[r1][c1] = 1 if sign == "<" else -1
+
+        for row in h_table:
+            lines.append(", ".join(str(v) for v in row))
+        lines.append("")
+        for row in v_table:
+            lines.append(", ".join(str(v) for v in row))
+
+        with open(filepath, "w", encoding="utf-8") as f:
+            f.write("\n".join(lines) + "\n")
