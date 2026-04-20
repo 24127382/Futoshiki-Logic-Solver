@@ -73,10 +73,20 @@ def main_cli():
         kb = KnowledgeBase(board.N)
         ground_axioms(kb, board)
         print(f"\nGrounded clauses: {len(kb.clauses)}")
-        solution = forward_chaining_solver(initial_state, kb)
-    elif solver_name == "a_star":
-        print(f"\nUsing A* solver (heuristic={heuristic_name})...")
-        solution = a_star_solver(initial_state, board, heuristic_name)
+        solution_state = forward_chaining_solver(initial_state, kb)
+        solution_grid = solution_state.board if solution_state else None
+        solve_time = 0  # Forward chaining doesn't track time
+        nodes_visited = 0
+    elif args.solver == 'a_star':
+        from src.solvers.a_star import a_star_solver
+        print(f"\nUsing A* solver...")
+        solution_state = a_star_solver(initial_state, board, "advanced")
+        solution_grid = solution_state.board if solution_state else None
+        solve_time = 0
+        nodes_visited = 0
+    elif args.solver == 'backward_chaining':
+        print(f"Solver '{args.solver}' is not yet implemented.")
+        return
     else:
         print(f"Solver '{args.solver}' is not yet implemented.")
         return

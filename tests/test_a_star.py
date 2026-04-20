@@ -29,8 +29,8 @@ class TestAStarSolver(unittest.TestCase):
 
     def test_a_star_respects_inequality_constraint(self):
         initial = State(((1, 0), (0, 0)), None)
-        # (1,1) < (1,2) forces first row to be (1,2)
-        constraints = ((1, 1, "<", 1, 2),)
+        # (0,0) < (0,1) forces first row to be (1,2) [0-based indexing from parser]
+        constraints = ((0, 0, "<", 0, 1),)
         board = Board(2, initial, constraints)
 
         solution = a_star_solver(initial, board)
