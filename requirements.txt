@@ -25,7 +25,7 @@ jupyter>=1.0             # Jupyter notebooks for experimentation
 
 # SAT Solver Integrations
 z3-solver>=4.12          # Microsoft Z3 satisfiability solver
-python-sat>=0.1.7       # Unified Python interface for SAT solvers
+# python-sat>=0.1.7       # Unified Python interface for SAT solvers
 pysmt>=0.9.5            # Rapid prototyping of SMT solvers
 
 # GUI Framework
