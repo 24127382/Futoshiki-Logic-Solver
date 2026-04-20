@@ -72,8 +72,8 @@ class ForwardChainingSolver:
                 )
             else:
                 return OutputData(
-                    status='unsolvable', # This triggers the warning popup in app.py
-                    solution=solution_matrix, # Still passes the partial matrix to draw
+                    status='unsolvable',
+                    solution=solution_matrix,
                     stats={
                         'time_ms': round(solve_time_ms, 2),
                         'clauses_generated': len(kb.clauses),
@@ -81,6 +81,18 @@ class ForwardChainingSolver:
                     },
                     message="Forward Chaining stopped. Pure logic/unit propagation is not enough to fully solve this complex grid without a backtracking phase. Displaying partial progress."
                 )
+        else:
+            # THE MISSING PIECE: What to do when the puzzle is a true contradiction
+            return OutputData(
+                status='unsolvable',
+                solution=None,
+                stats={
+                    'time_ms': round(solve_time_ms, 2),
+                    'clauses_generated': len(kb.clauses),
+                    'algorithm': 'Forward Chaining'
+                },
+                message="No logical solution exists. The constraints contradict each other."
+            )
 
     def _forward_chaining_core(self, initial_state: State, kb: KnowledgeBase, stop_event: threading.Event) -> Optional[State]:
         if not kb.clauses:
