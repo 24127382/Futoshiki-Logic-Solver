@@ -111,7 +111,7 @@ def ground_inequality_constraints(kb: KnowledgeBase, board: Board) -> None:
     # Separate constraints into horizontal and vertical
     h_constraints = []
     v_constraints = []
-    
+
     for constraint in board.constraints:
         # Constraint format: (r1, c1, op, r2, c2) - 0-indexed from parser
         r1, c1, op, r2, c2 = constraint

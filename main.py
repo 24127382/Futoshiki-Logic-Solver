@@ -1,77 +1,133 @@
+"""Command-line entrypoint for the Futoshiki solver."""
+
+from __future__ import annotations
+
 import argparse
-import os
-from src.utils.parser import load_puzzle_file, save_solution, format_board
+import glob
+from typing import Optional
 
-# Import solvers
-from src.solvers.backtracking import BacktrackingSolver
-from src.solvers.forward_chaining import forward_chaining_solver
-from src.models.kb import KnowledgeBase
+from benchmark import benchmark_solver, print_summary
 from src.logic.grounding import ground_axioms
-# from src.solvers.a_star import AStarSolver
+from src.models.kb import KnowledgeBase
+from src.solvers.a_star import a_star_solver
+from src.solvers.forward_chaining import forward_chaining_solver
+from src.utils.parser import format_board, load_puzzle_file, save_solution
 
-def main():
-    parser = argparse.ArgumentParser(description="Futoshiki Solver AI Sandbox")
-    parser.add_argument("--input", type=str, required=True, help="Path to input puzzle file")
-    parser.add_argument("--solver", type=str, required=True, choices=['backtracking', 'a_star', 'forward_chaining', 'backward_chaining'], help="Solver algorithm to use")
-    parser.add_argument("--output", type=str, default="outputs", help="Directory or file path to save the solution")
-    parser.add_argument("--verbose", action="store_true", help="Enable detailed logging")
 
+def run_solve(
+    input_file: str,
+    output_file: Optional[str] = None,
+    solver_name: str = "forward_chaining",
+    heuristic_name: str = "advanced",
+) -> int:
+    """Solve one puzzle using the default solver pipeline."""
+    board, initial_state = load_puzzle_file(input_file)
+
+    print(f"Loaded puzzle: {input_file}")
+    print(f"Board size: {board.N}x{board.N}")
+    print(f"Constraints: {len(board.constraints)}")
+    print(format_board(initial_state.board, "Initial State"))
+
+    if solver_name == "forward_chaining":
+        kb = KnowledgeBase(board.N)
+        ground_axioms(kb, board)
+        print(f"\nGrounded clauses: {len(kb.clauses)}")
+        solution = forward_chaining_solver(initial_state, kb)
+    elif solver_name == "a_star":
+        print(f"\nUsing A* solver (heuristic={heuristic_name})...")
+        solution = a_star_solver(initial_state, board, heuristic_name)
+    else:
+        raise ValueError(f"Unsupported solver: {solver_name}")
+
+    if solution is None:
+        print("\nNo solution found.")
+        return 2
+
+    print(format_board(solution.board, "Solution"))
+    print("\nPuzzle solved.")
+
+    if output_file:
+        save_solution(solution.board, output_file)
+        print(f"Saved solution to: {output_file}")
+
+    return 0
+
+
+def run_benchmark(pattern: str) -> int:
+    """Run benchmark across puzzle files matching pattern."""
+    files = sorted(glob.glob(pattern))
+    if not files:
+        print(f"No puzzle files matched: {pattern}")
+        return 1
+
+    all_metrics = {}
+    for puzzle_file in files:
+        try:
+            all_metrics[puzzle_file] = benchmark_solver(puzzle_file)
+        except Exception as exc:  # pragma: no cover - benchmark errors are reported per file
+            print(f"Benchmark failed for {puzzle_file}: {exc}")
+
+    if all_metrics:
+        print_summary(all_metrics)
+        return 0
+
+    return 1
+
+
+def build_parser() -> argparse.ArgumentParser:
+    """Build CLI parser for solver and benchmark workflows."""
+    parser = argparse.ArgumentParser(description="Futoshiki solver")
+    subparsers = parser.add_subparsers(dest="command")
+
+    solve_parser = subparsers.add_parser("solve", help="Solve one puzzle file")
+    solve_parser.add_argument("--input", required=True, help="Path to puzzle input file")
+    solve_parser.add_argument("--output", help="Optional path to write solved board")
+    solve_parser.add_argument(
+        "--solver",
+        default="forward_chaining",
+        choices=["forward_chaining", "a_star"],
+        help="Solver to run (default: forward_chaining)",
+    )
+    solve_parser.add_argument(
+        "--heuristic",
+        default="advanced",
+        choices=[
+            "advanced",
+            "combined",
+            "domain_width",
+            "remaining_cells",
+            "constraint_violations",
+            "missing_values",
+            "sum_remaining_values",
+            "inequality_violations",
+            "inequality_slack",
+        ],
+        help="Heuristic for A* (ignored by forward_chaining)",
+    )
+
+    bench_parser = subparsers.add_parser("benchmark", help="Benchmark one or more puzzle files")
+    bench_parser.add_argument(
+        "--pattern",
+        default="inputs/*.txt",
+        help="Glob pattern for puzzle files (default: inputs/*.txt)",
+    )
+
+    return parser
+
+
+def main() -> int:
+    """Program entrypoint."""
+    parser = build_parser()
     args = parser.parse_args()
 
-    # 1. Load the puzzle
-    try:
-        board, initial_state = load_puzzle_file(args.input)
-        if args.verbose:
-            print(f"Loaded puzzle from {args.input}")
-            print(format_board(initial_state.board, title="Initial State"))
-    except Exception as e:
-        print(f"Error loading puzzle: {e}")
-        return
+    if args.command == "solve":
+        return run_solve(args.input, args.output, args.solver, args.heuristic)
+    if args.command == "benchmark":
+        return run_benchmark(args.pattern)
 
-    # 2. Select and initialize the solver
-    if args.solver == 'backtracking':
-        solver = BacktrackingSolver()
-        print(f"\nSolving with {args.solver}...")
-        solution_grid = solver.solve(board)
-        solve_time = solver.solve_time
-        nodes_visited = solver.nodes_visited
-        
-    elif args.solver == 'forward_chaining':
-        print(f"\nSolving with {args.solver}...")
-        kb = KnowledgeBase(board.N)
-        print("Grounding axioms...")
-        ground_axioms(kb, board)
-        solution_state = forward_chaining_solver(initial_state, kb)
-        solution_grid = solution_state.board if solution_state else None
-        solve_time = 0.0  # Forward chaining doesn't track timing
-        nodes_visited = 0
-        
-    else:
-        print(f"Solver '{args.solver}' is not yet implemented.")
-        return
+    parser.print_help()
+    return 1
 
-    # 3. Handle Output
-    if solution_grid:
-        print(f"\nSolution found in {solve_time:.4f} seconds!")
-        if nodes_visited > 0:
-            print(f"Nodes visited: {nodes_visited}")
-
-        if args.verbose:
-            print(format_board(solution_grid, title="Solved State"))
-
-        # Prepare output directory/filename
-        if os.path.isdir(args.output) or not args.output.endswith('.txt'):
-            os.makedirs(args.output, exist_ok=True)
-            base_name = os.path.basename(args.input).replace('.txt', '_solution.txt')
-            output_path = os.path.join(args.output, base_name)
-        else:
-            output_path = args.output
-
-        # Save it
-        save_solution(solution_grid, output_path)
-        print(f"Solution saved to {output_path}")
-    else:
-        print("\nNo solution exists for this puzzle.")
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
