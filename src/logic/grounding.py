@@ -96,6 +96,10 @@ def ground_inequality_constraints(kb: KnowledgeBase, board: Board) -> None:
     """Ground inequality constraints from the puzzle.
     
     Convert the board's constraint tuples into CNF clauses and add them to the KB.
+    Constraint format from parser: (r1, c1, op, r2, c2) where:
+    - Horizontal: r1 == r2 and c2 == c1 + 1
+    - Vertical: c1 == c2 and r2 == r1 + 1
+    - Coordinates are 0-indexed; convert to 1-indexed for KB
     
     Args:
         kb: The knowledge base to which clauses will be added
@@ -109,13 +113,18 @@ def ground_inequality_constraints(kb: KnowledgeBase, board: Board) -> None:
     v_constraints = []
     
     for constraint in board.constraints:
-        # Assuming constraint format: (row, col, operator)
-        # where row,col is the position of the left/top cell
-        r, c, op = constraint
-        if op in ['<', '>']:  # Horizontal constraints would be adjacent columns
-            # This needs clarification based on how constraints are parsed
-            # For now, assuming they're already separated or will be
-            pass
+        # Constraint format: (r1, c1, op, r2, c2) - 0-indexed from parser
+        r1, c1, op, r2, c2 = constraint
+        
+        # Convert to 1-indexed for KB
+        r1_idx = r1 + 1
+        c1_idx = c1 + 1
+        
+        # Determine if horizontal or vertical based on which coordinate changes
+        if c1 != c2:  # Horizontal: column changes (same row)
+            h_constraints.append((r1_idx, c1_idx, op))
+        else:  # Vertical: row changes (same column)
+            v_constraints.append((r1_idx, c1_idx, op))
     
     # Generate and add inequality clauses
     ineq_clauses = inequality_clauses(kb, h_constraints, v_constraints)
