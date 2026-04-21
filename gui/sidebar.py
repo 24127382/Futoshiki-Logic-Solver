@@ -26,14 +26,14 @@ from gui.controller import SolverType
 class Sidebar(ctk.CTkFrame):
     """
     Control panel sidebar on the left.
-    
+
     Contains all user controls and status displays.
     """
 
     def __init__(self, parent, on_solve_click: Callable = None, **kwargs):
         """
         Initialize the sidebar.
-        
+
         Args:
             parent: Parent tkinter widget
             on_solve_click: Callback when "Solve" button clicked
@@ -41,17 +41,17 @@ class Sidebar(ctk.CTkFrame):
             **kwargs: Passed to CTkFrame
         """
         super().__init__(parent, **kwargs)
-        
+
         # Callbacks
         self.on_solve_click = on_solve_click or self._default_callback
         self.on_file_load = None
         self.on_size_change = None
-        
+
         # State
         self.current_size = 4
         self.current_algorithm = SolverType.BACKTRACKING
         self.is_solving = False
-        
+
         # Create widgets
         self._create_widgets()
 
@@ -78,9 +78,9 @@ class Sidebar(ctk.CTkFrame):
         # ====================================================================
         file_frame = ctk.CTkFrame(self)
         file_frame.pack(padx=10, pady=10, fill="x")
-        
+
         ctk.CTkLabel(file_frame, text="📁 Load Puzzle", font=("Arial", 12, "bold")).pack()
-        
+
         self.file_button = ctk.CTkButton(
             file_frame,
             text="Open File",
@@ -89,7 +89,7 @@ class Sidebar(ctk.CTkFrame):
             hover_color="#0052a3"
         )
         self.file_button.pack(pady=5, fill="x")
-        
+
         self.file_label = ctk.CTkLabel(file_frame, text="No file loaded", text_color="gray")
         self.file_label.pack(pady=2)
 
@@ -98,11 +98,11 @@ class Sidebar(ctk.CTkFrame):
         # ====================================================================
         size_frame = ctk.CTkFrame(self)
         size_frame.pack(padx=10, pady=10, fill="x")
-        
+
         ctk.CTkLabel(size_frame, text="🔲 Grid Size", font=("Arial", 12, "bold")).pack()
-        
+
         self.size_var = tk.IntVar(value=4)
-        
+
         # Radio buttons for sizes 4-9
         for size in range(4, 10):
             rb = ctk.CTkRadioButton(
@@ -119,17 +119,18 @@ class Sidebar(ctk.CTkFrame):
         # ====================================================================
         algo_frame = ctk.CTkFrame(self)
         algo_frame.pack(padx=10, pady=10, fill="x")
-        
+
         ctk.CTkLabel(algo_frame, text="⚙️ Algorithm", font=("Arial", 12, "bold")).pack()
-        
+
         self.algo_var = tk.StringVar(value=SolverType.BACKTRACKING.value)
-        
+
         algorithms = [
             (SolverType.BACKTRACKING, "Backtracking"),
             (SolverType.FORWARD_CHAINING, "Forward Chaining"),
+            (SolverType.BACKWARD_CHAINING, "Backward Chaining"),
             (SolverType.A_STAR, "A*"),
         ]
-        
+
         for algo_type, label in algorithms:
             rb = ctk.CTkRadioButton(
                 algo_frame,
@@ -145,9 +146,9 @@ class Sidebar(ctk.CTkFrame):
         # ====================================================================
         timeout_frame = ctk.CTkFrame(self)
         timeout_frame.pack(padx=10, pady=10, fill="x")
-        
+
         ctk.CTkLabel(timeout_frame, text="⏱️ Timeout (seconds)", font=("Arial", 12, "bold")).pack()
-        
+
         self.timeout_var = tk.IntVar(value=30)
         self.timeout_entry = ctk.CTkEntry(
             timeout_frame,
@@ -161,7 +162,7 @@ class Sidebar(ctk.CTkFrame):
         # ====================================================================
         button_frame = ctk.CTkFrame(self)
         button_frame.pack(padx=10, pady=15, fill="x")
-        
+
         self.solve_button = ctk.CTkButton(
             button_frame,
             text="▶ SOLVE",
@@ -171,7 +172,7 @@ class Sidebar(ctk.CTkFrame):
             font=("Arial", 14, "bold")
         )
         self.solve_button.pack(pady=5, fill="x")
-        
+
         self.clear_button = ctk.CTkButton(
             button_frame,
             text="🗑️ Clear Grid",
@@ -186,9 +187,9 @@ class Sidebar(ctk.CTkFrame):
         # ====================================================================
         status_frame = ctk.CTkFrame(self)
         status_frame.pack(padx=10, pady=10, fill="x")
-        
+
         ctk.CTkLabel(status_frame, text="📊 Status", font=("Arial", 12, "bold")).pack()
-        
+
         self.status_label = ctk.CTkLabel(
             status_frame,
             text="Ready",
@@ -202,9 +203,9 @@ class Sidebar(ctk.CTkFrame):
         # ====================================================================
         stats_frame = ctk.CTkFrame(self)
         stats_frame.pack(padx=10, pady=10, fill="x")
-        
+
         ctk.CTkLabel(stats_frame, text="📈 Solver Stats", font=("Arial", 12, "bold")).pack()
-        
+
         self.stats_text = ctk.CTkTextbox(
             stats_frame,
             height=150,
@@ -225,7 +226,7 @@ class Sidebar(ctk.CTkFrame):
             title="Open Futoshiki Puzzle",
             filetypes=filetypes
         )
-        
+
         if filepath:
             self.file_label.configure(text=filepath.split("/")[-1])
             if self.on_file_load:
@@ -248,13 +249,13 @@ class Sidebar(ctk.CTkFrame):
         if self.is_solving:
             messagebox.showwarning("Solving", "Already solving. Please wait.")
             return
-        
+
         # Get timeout value
         try:
             timeout = int(self.timeout_var.get())
         except ValueError:
             timeout = 30
-        
+
         # Call callback with current state
         self.on_solve_click(
             size=self.current_size,
@@ -265,8 +266,9 @@ class Sidebar(ctk.CTkFrame):
     def _on_clear_click(self) -> None:
         """Handle Clear button click."""
         if messagebox.askyesno("Confirm", "Clear all values and constraints?"):
-            # Callback will be handled by app
-            pass
+            # Call the parent app's clear function if it exists
+            if hasattr(self, 'on_clear_click') and self.on_clear_click:
+                self.on_clear_click()
 
     # ========================================================================
     # STATE UPDATES (Called by Controller)
@@ -281,7 +283,7 @@ class Sidebar(ctk.CTkFrame):
     def update_status(self, status: str, color: str = "white") -> None:
         """
         Update status display.
-        
+
         Args:
             status: Status message
             color: Text color
@@ -291,16 +293,16 @@ class Sidebar(ctk.CTkFrame):
     def update_stats(self, stats: Dict[str, Any]) -> None:
         """
         Update solver stats display.
-        
+
         Args:
             stats: Dict with stats keys/values
         """
         self.stats_text.configure(state="normal")
         self.stats_text.delete("1.0", "end")
-        
+
         for key, value in stats.items():
             self.stats_text.insert("end", f"{key}: {value}\n")
-        
+
         self.stats_text.configure(state="disabled")
 
     def set_grid_size(self, size: int) -> None:
