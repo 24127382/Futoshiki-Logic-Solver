@@ -140,14 +140,18 @@ class FutoshikiController:
             solver = ForwardChainingSolver(timeout=self.timeout_seconds)
             return solver.solve(input_data, self.stop_event)
 
-        elif algorithm in [SolverType.A_STAR, SolverType.BACKWARD_CHAINING]:
-            # Graceful warning for algorithms not yet wired up
-            name = algorithm.name.replace('_', ' ').title()
+        elif algorithm == SolverType.A_STAR:
+            from src.solvers.a_star import A_StarSolver
+            solver = A_StarSolver(timeout=self.timeout_seconds)
+            return solver.solve(input_data, self.stop_event)
+
+        elif algorithm == SolverType.BACKWARD_CHAINING:
+            # Graceful warning for backward chaining (not yet implemented)
             return OutputData(
                 status='not_implemented',
-                solution=input_data.matrix, # Return original grid untouched
+                solution=input_data.matrix,
                 stats={'time_ms': 0},
-                message=f"The {name} algorithm is currently out of service. Please select another algorithm."
+                message="The Backward Chaining algorithm is not yet implemented. Please select another algorithm."
             )
 
         return OutputData(status='error', message=f"Unknown solver '{algorithm.value}'.")

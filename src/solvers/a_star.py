@@ -8,6 +8,8 @@ This implementation is constraint-aware:
 
 from __future__ import annotations
 
+import time
+import threading
 from heapq import heappop, heappush
 from itertools import count
 from typing import List, Optional, Tuple
@@ -15,6 +17,83 @@ from typing import List, Optional, Tuple
 from src.models.board import Board
 from src.models.state import State
 from src.utils.heuristic import get_heuristic
+from gui.bridge import InputData, OutputData
+
+
+class A_StarSolver:
+	"""
+	A* solver adapted for the GUI.
+	Uses heuristic-guided search with constraint validation.
+	"""
+
+	def __init__(self, timeout: float = 30.0):
+		self.timeout = timeout
+		self.start_time = 0.0
+		self.nodes_visited = 0
+
+	def solve(self, input_data: InputData, stop_event: threading.Event = None) -> OutputData:
+		"""
+		Solve a Futoshiki puzzle using A* search.
+		
+		Args:
+			input_data: Puzzle data (size, matrix, constraints)
+			stop_event: Threading event to signal timeout
+			
+		Returns:
+			OutputData with solution status and results
+		"""
+		self.start_time = time.time()
+		N = input_data.size
+
+		# 1. Setup Models
+		initial_board = tuple(tuple(row) for row in input_data.matrix)
+		initial_state = State(initial_board)
+
+		# Convert GUI constraints: ((r1, c1), (r2, c2), op) -> (r1, c1, op, r2, c2)
+		solver_constraints = []
+		for (r1, c1), (r2, c2), op in input_data.constraints:
+			solver_constraints.append((r1, c1, op, r2, c2))
+
+		board = Board(N, initial_state, tuple(solver_constraints))
+
+		# 2. Run A* solver
+		result_state = a_star_solver(initial_state, board)
+
+		solve_time_ms = (time.time() - self.start_time) * 1000
+
+		# Handle cancellation/timeout
+		if stop_event and stop_event.is_set():
+			return OutputData(
+				status='timeout',
+				solution=None,
+				stats={'time_ms': round(solve_time_ms, 2), 'nodes_visited': self.nodes_visited},
+				message="Solver timed out or was cancelled."
+			)
+
+		# Handle completion
+		if result_state:
+			solution_matrix = [list(row) for row in result_state.board]
+			return OutputData(
+				status='success',
+				solution=solution_matrix,
+				stats={
+					'time_ms': round(solve_time_ms, 2),
+					'nodes_visited': self.nodes_visited,
+					'algorithm': 'A*'
+				},
+				message="Puzzle solved successfully with A* search!"
+			)
+		else:
+			return OutputData(
+				status='unsolvable',
+				solution=None,
+				stats={
+					'time_ms': round(solve_time_ms, 2),
+					'nodes_visited': self.nodes_visited,
+					'algorithm': 'A*'
+				},
+				message="No solution exists for this puzzle."
+			)
 
 
 def a_star_solver(

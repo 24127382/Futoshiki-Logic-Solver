@@ -119,6 +119,7 @@ class FutoshikiApp(ctk.CTk):
         self.sidebar.on_file_load = self._on_file_load
         self.sidebar.on_size_change = self._on_size_change
         self.sidebar.on_clear_click = self._on_clear_click
+        self.sidebar.on_constraint_mode_toggle = self._on_constraint_mode_toggle
     # ========================================================================
     # EVENT HANDLERS
     # ========================================================================
@@ -207,6 +208,17 @@ class FutoshikiApp(ctk.CTk):
         self.sidebar.update_status("Ready", color="#00cc66")
         self.sidebar.update_stats({})
         self.sidebar.file_label.configure(text="No file loaded")
+
+    def _on_constraint_mode_toggle(self, enabled: bool) -> None:
+        """
+        Handle constraint mode toggle from sidebar.
+        
+        Args:
+            enabled: True to enable constraint mode, False for value input mode
+        """
+        self.board_frame.set_constraint_mode(enabled)
+        mode_text = "✏️ Constraint Mode: ACTIVE" if enabled else "Value Input Mode"
+        self.sidebar.update_status(mode_text, color="#ffaa00" if enabled else "#00cc66")
 
     # ========================================================================
     # CONTROLLER CALLBACKS (What Controller calls back to GUI with)
