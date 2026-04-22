@@ -146,13 +146,9 @@ class FutoshikiController:
             return solver.solve(input_data, self.stop_event)
 
         elif algorithm == SolverType.BACKWARD_CHAINING:
-            # Graceful warning for backward chaining (not yet implemented)
-            return OutputData(
-                status='not_implemented',
-                solution=input_data.matrix,
-                stats={'time_ms': 0},
-                message="The Backward Chaining algorithm is not yet implemented. Please select another algorithm."
-            )
+            from src.solvers.backward_chaining import BackwardChainingSolver
+            solver = BackwardChainingSolver(timeout=self.timeout_seconds)
+            return solver.solve(input_data, self.stop_event)
 
         return OutputData(status='error', message=f"Unknown solver '{algorithm.value}'.")
 
