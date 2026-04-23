@@ -21,6 +21,7 @@ from tkinter import filedialog, messagebox
 from typing import Callable, Optional, Dict, Any
 import customtkinter as ctk
 from gui.controller import SolverType
+import os
 
 
 class Sidebar(ctk.CTkFrame):
@@ -52,7 +53,7 @@ class Sidebar(ctk.CTkFrame):
         self.current_algorithm = SolverType.BACKTRACKING
         self.is_solving = False
         self.constraint_mode = False
-        
+
         # Callbacks for constraint mode
         self.on_constraint_mode_toggle = None
         self.on_clear_click = None
@@ -86,7 +87,7 @@ class Sidebar(ctk.CTkFrame):
             fg_color="transparent"
         )
         self.scrollable_frame.pack(fill="both", expand=True, padx=0, pady=0)
-        
+
         # ====================================================================
         # FILE SECTION
         # ====================================================================
@@ -163,7 +164,8 @@ class Sidebar(ctk.CTkFrame):
 
         ctk.CTkLabel(timeout_frame, text="⏱️ Timeout (seconds)", font=("Arial", 12, "bold")).pack()
 
-        self.timeout_var = tk.IntVar(value=30)
+        self.timeout_var = tk.StringVar(value="30")
+
         self.timeout_entry = ctk.CTkEntry(
             timeout_frame,
             textvariable=self.timeout_var,
@@ -180,10 +182,10 @@ class Sidebar(ctk.CTkFrame):
         ctk.CTkLabel(constraint_frame, text="✏️ Input Mode", font=("Arial", 12, "bold")).pack()
 
         self.constraint_mode_var = tk.BooleanVar(value=False)
-        
+
         mode_option_frame = ctk.CTkFrame(constraint_frame)
         mode_option_frame.pack(fill="x", pady=5)
-        
+
         ctk.CTkRadioButton(
             mode_option_frame,
             text="Value Input",
@@ -191,7 +193,7 @@ class Sidebar(ctk.CTkFrame):
             value=False,
             command=self._on_constraint_mode_change
         ).pack(anchor="w", padx=10, pady=2)
-        
+
         ctk.CTkRadioButton(
             mode_option_frame,
             text="Create Constraints",
@@ -267,9 +269,16 @@ class Sidebar(ctk.CTkFrame):
     def _on_file_open(self) -> None:
         """Handle file open dialog."""
         filetypes = [("Text files", "*.txt"), ("All files", "*.*")]
+
+        # Calculate the absolute path to the inputs/ directory
+        # (sidebar.py is inside gui/, so we go up one level then into inputs/)
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        inputs_dir = os.path.join(os.path.dirname(current_dir), "inputs")
+
         filepath = filedialog.askopenfilename(
             title="Open Futoshiki Puzzle",
-            filetypes=filetypes
+            filetypes=filetypes,
+            initialdir=inputs_dir  # Tell the dialog to start here
         )
 
         if filepath:
@@ -301,9 +310,10 @@ class Sidebar(ctk.CTkFrame):
             messagebox.showwarning("Solving", "Already solving. Please wait.")
             return
 
-        # Get timeout value
+        # 2. Safe conversion: if empty or invalid, default to 30
         try:
-            timeout = int(self.timeout_var.get())
+            raw_val = self.timeout_var.get()
+            timeout = int(raw_val) if raw_val.strip() else 30
         except ValueError:
             timeout = 30
 
@@ -331,14 +341,8 @@ class Sidebar(ctk.CTkFrame):
         self.solve_button.configure(state="disabled" if is_solving else "normal")
         self.file_button.configure(state="disabled" if is_solving else "normal")
 
-    def update_status(self, status: str, color: str = "white") -> None:
-        """
-        Update status display.
-
-        Args:
-            status: Status message
-            color: Text color
-        """
+    def update_status(self, status: str, color: str = "black") -> None:
+        """Update status display."""
         self.status_label.configure(text=status, text_color=color)
 
     def update_stats(self, stats: Dict[str, Any]) -> None:
