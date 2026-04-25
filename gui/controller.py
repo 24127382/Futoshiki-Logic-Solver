@@ -195,38 +195,75 @@ class FutoshikiController:
         input_data: InputData,
         algorithm: SolverType
     ) -> OutputData:
-        """
-        Call the appropriate solver algorithm.
-        
-        TODO: ALGORITHM TEAM - COMPLETE THIS FUNCTION
-        
-        Current skeleton:
-        - Check algorithm type
-        - Import the solver from src/solvers/
-        - Call solver.solve(input_data)
-        - Handle timeout
-        - Return OutputData
-        
-        Example implementation (pseudo-code):
-        ```python
+        """Call the appropriate solver algorithm and return OutputData."""
+        import time
+        from src.models.state import State
+        from src.models.board import Board
+
+        # Build immutable State and Board from InputData
+        matrix_tuple = tuple(tuple(row) for row in input_data.matrix)
+        initial_state = State(matrix_tuple, None)
+
+        # Convert constraints from ((r1,c1),(r2,c2),sign) → (r1,c1,sign,r2,c2)
+        constraints = tuple(
+            (c1[0], c1[1], sign, c2[0], c2[1])
+            for c1, c2, sign in input_data.constraints
+        )
+        board = Board(input_data.size, initial_state, constraints)
+
+        start = time.time()
+
         if algorithm == SolverType.BACKTRACKING:
             from src.solvers.backtracking import BacktrackingSolver
-            solver = BacktrackingSolver(timeout=self.timeout_seconds)
-            return solver.solve(input_data)
+            solver = BacktrackingSolver()
+            solution_grid = solver.solve(board)
+            elapsed = solver.solve_time
+            stats = {
+                'Algorithm': 'Backtracking',
+                'Time': f'{elapsed:.4f}s',
+                'Nodes visited': solver.nodes_visited,
+            }
+            solution = [list(row) for row in solution_grid] if solution_grid else None
+
         elif algorithm == SolverType.FORWARD_CHAINING:
-            from src.solvers.forward_chaining import ForwardChainingSolver
-            solver = ForwardChainingSolver(timeout=self.timeout_seconds)
-            return solver.solve(input_data)
-        ...
-        ```
-        """
-        # PLACEHOLDER - Replace with actual solver calls
-        return OutputData(
-            status='success',
-            solution=input_data.matrix,  # Just echo back for now
-            stats={'time_ms': 0, 'iterations': 0},
-            message='Placeholder - solver not implemented'
-        )
+            from src.solvers.forward_chaining import forward_chaining_solver
+            from src.models.kb import KnowledgeBase
+            from src.logic.grounding import ground_axioms
+            kb = KnowledgeBase(board.N)
+            ground_axioms(kb, board)
+            solution_state = forward_chaining_solver(initial_state, kb)
+            elapsed = time.time() - start
+            is_complete = solution_state is not None and solution_state.is_complete()
+            stats = {
+                'Algorithm': 'Forward Chaining',
+                'Time': f'{elapsed:.4f}s',
+                'Clauses grounded': len(kb.clauses),
+                'Result': 'Complete' if is_complete else ('Partial (unit prop only)' if solution_state else 'Contradiction'),
+            }
+            # Show partial result on board; only block on hard contradiction (None)
+            solution = [list(row) for row in solution_state.board] if solution_state else None
+
+        elif algorithm == SolverType.A_STAR:
+            from src.solvers.a_star import a_star_solver
+            solution_state = a_star_solver(initial_state, board, "advanced")
+            elapsed = time.time() - start
+            stats = {
+                'Algorithm': 'A*',
+                'Time': f'{elapsed:.4f}s',
+            }
+            complete = solution_state and solution_state.is_complete()
+            solution = [list(row) for row in solution_state.board] if complete else None
+
+        else:
+            return OutputData(
+                status='error',
+                stats={},
+                message=f'Solver "{algorithm.value}" is not implemented.'
+            )
+
+        if solution is not None:
+            return OutputData(status='success', solution=solution, stats=stats, message='Solved!')
+        return OutputData(status='unsolvable', solution=None, stats=stats, message='No solution found.')
 
     # ========================================================================
     # UTILITY METHODS

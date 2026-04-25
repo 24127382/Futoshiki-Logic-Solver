@@ -158,25 +158,47 @@ class FutoshikiApp(ctk.CTk):
     def _on_file_load(self, filepath: str) -> None:
         """
         Handle file load from sidebar.
-        
+
         Args:
             filepath: Path to puzzle file
-        
-        TODO: Implement file loading
-        - Use src/utils/parser.py to parse the file
-        - Extract size, matrix, constraints
-        - Update board_frame and sidebar
         """
         try:
-            # TODO: Parse file using src/utils/parser.py
-            # matrix, constraints, size = parser.parse_file(filepath)
-            
-            # For now, just show a placeholder
-            messagebox.showinfo(
-                "File Load",
-                "File loading not yet implemented.\n"
-                "Use parser.py from src/utils/ to implement this."
-            )
+            from src.utils.parser import load_puzzle_file
+            board, initial_state = load_puzzle_file(filepath)
+
+            N = board.N
+            if not (4 <= N <= 9):
+                messagebox.showerror(
+                    "Unsupported Size",
+                    f"Grid size {N}×{N} is not supported.\nThis GUI supports sizes 4–9 only."
+                )
+                return
+
+            # Resize if needed, otherwise clear existing data
+            if self.board_frame.get_size() != N:
+                self.board_frame.resize(N)
+            else:
+                self.board_frame.clear_grid()
+
+            # Sync sidebar size selector without triggering resize callback
+            self.sidebar.set_grid_size(N)
+
+            # Re-enable editing (may have been disabled after a previous solve)
+            self.board_frame.enable_editing()
+
+            # Populate grid cells with given clues
+            matrix = [list(row) for row in initial_state.board]
+            self.board_frame.set_matrix(matrix)
+
+            # Convert constraints to GUI format: "(r1,c1)-(r2,c2)" -> sign
+            gui_constraints = {}
+            for r1, c1, sign, r2, c2 in board.constraints:
+                gui_constraints[f"({r1},{c1})-({r2},{c2})"] = sign
+            self.board_frame.set_constraints(gui_constraints)
+
+            filename = filepath.replace("\\", "/").split("/")[-1]
+            self.sidebar.update_status(f"Loaded: {filename}", color="#00cc66")
+
         except Exception as e:
             messagebox.showerror("Error", f"Failed to load file:\n{str(e)}")
 
