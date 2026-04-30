@@ -140,5 +140,6 @@ Thumbs.db
 outputs/
 *.csv
 *.json
+*.tex
 
 doc/

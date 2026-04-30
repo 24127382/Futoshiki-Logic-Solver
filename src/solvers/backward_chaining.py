@@ -22,7 +22,7 @@ Clause = Tuple[int, ...]
 Assignment = Dict[int, bool]
 
 
-def backward_chaining_solver(initial_state: State, kb: KnowledgeBase) -> Optional[State]:
+def backward_chaining_solver(initial_state: State, kb: KnowledgeBase, stop_event: threading.Event = None) -> Optional[State]:
 	"""Solve a grounded Futoshiki CNF by backward chaining (DPLL).
 
 	Args:
@@ -36,14 +36,16 @@ def backward_chaining_solver(initial_state: State, kb: KnowledgeBase) -> Optiona
 		return initial_state
 
 	clauses: List[Clause] = [tuple(clause) for clause in kb.clauses]
-	model = _dpll(clauses, {})
+	model = _dpll(clauses, {}, stop_event)
 	if model is None:
 		return None
 
 	return _build_state_from_model(initial_state, kb.N, model)
 
 
-def _dpll(clauses: List[Clause], assignment: Assignment) -> Optional[Assignment]:
+def _dpll(clauses: List[Clause], assignment: Assignment, stop_event: threading.Event = None) -> Optional[Assignment]:
+	if stop_event and stop_event.is_set():
+		return None
 	# Apply deterministic simplifications first.
 	ok, assignment = _unit_propagate(clauses, assignment)
 	if not ok:
@@ -67,7 +69,7 @@ def _dpll(clauses: List[Clause], assignment: Assignment) -> Optional[Assignment]
 	for value in (True, False):
 		next_assignment = dict(assignment)
 		next_assignment[branch_var] = value
-		result = _dpll(clauses, next_assignment)
+		result = _dpll(clauses, next_assignment, stop_event)
 		if result is not None:
 			return result
 
@@ -285,7 +287,7 @@ class BackwardChainingSolver:
 		ground_axioms(kb, board)
 
 		# 3. Run Backward Chaining (DPLL)
-		result_state = backward_chaining_solver(initial_state, kb)
+		result_state = backward_chaining_solver(initial_state, kb, stop_event=stop_event)
 
 		solve_time_ms = (time.time() - self.start_time) * 1000
 

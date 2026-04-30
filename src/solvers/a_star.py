@@ -43,6 +43,7 @@ class A_StarSolver:
 			OutputData with solution status and results
 		"""
 		self.start_time = time.time()
+		self.nodes_visited = 0
 		N = input_data.size
 
 		# 1. Setup Models
@@ -57,7 +58,8 @@ class A_StarSolver:
 		board = Board(N, initial_state, tuple(solver_constraints))
 
 		# 2. Run A* solver
-		result_state = a_star_solver(initial_state, board)
+		result_state, nodes = a_star_solver(initial_state, board, stop_event=stop_event)
+		self.nodes_visited = nodes
 
 		solve_time_ms = (time.time() - self.start_time) * 1000
 
@@ -97,8 +99,8 @@ class A_StarSolver:
 
 
 def a_star_solver(
-	initial_state: State, board: Board, heuristic_name: str = "advanced"
-) -> Optional[State]:
+	initial_state: State, board: Board, heuristic_name: str = "advanced", stop_event: threading.Event = None
+) -> Tuple[Optional[State], int]:
 	"""Solve a puzzle using A* search.
 
 	Args:
@@ -106,15 +108,16 @@ def a_star_solver(
 		board: Puzzle definition with board size and constraints.
 
 	Returns:
-		Solved state if found, otherwise None.
+		Solved state if found, otherwise None, and nodes visited.
 	"""
 	start = State(initial_state.board, board)
 	heuristic_fn = get_heuristic(heuristic_name)
 	if not _is_partial_valid(start.board, board):
-		return None
+		return None, 0
 
 	queue: List[Tuple[int, int, int, State]] = []
 	ticket = count()
+	nodes_visited = 0
 
 	start_g = _filled_cells(start.board)
 	start_h = heuristic_fn(start, board)
@@ -123,10 +126,13 @@ def a_star_solver(
 	best_g = {start: start_g}
 
 	while queue:
+		if stop_event and stop_event.is_set():
+			return None, nodes_visited
 		_, _, _, current = heappop(queue)
+		nodes_visited += 1
 
 		if current.is_complete() and _is_partial_valid(current.board, board):
-			return State(current.board, board)
+			return State(current.board, board), nodes_visited
 
 		current_g = best_g.get(current)
 		if current_g is None:
@@ -151,7 +157,7 @@ def a_star_solver(
 			next_h = heuristic_fn(next_state, board)
 			heappush(queue, (next_g + next_h, next_h, next(ticket), next_state))
 
-	return None
+	return None, nodes_visited
 
 
 def _filled_cells(grid: Tuple[Tuple[int, ...], ...]) -> int:
