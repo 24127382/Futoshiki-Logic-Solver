@@ -1,7 +1,12 @@
 
 """Board representation for Futoshiki puzzles."""
-from typing import Tuple
+from typing import Tuple, Union
 from src.models.state import State
+
+
+Constraint3 = Tuple[int, int, str]
+Constraint5 = Tuple[int, int, str, int, int]
+Constraint = Union[Constraint3, Constraint5]
 
 
 class Board:

@@ -25,13 +25,10 @@ if gui_path not in sys.path:
 
 from src.utils.parser import load_puzzle_file, save_solution, format_board
 
-# Import solvers
+# Import the new GUI-adapted solvers
 from src.solvers.backtracking import BacktrackingSolver
-from src.solvers.forward_chaining import forward_chaining_solver
-from src.models.kb import KnowledgeBase
-from src.logic.grounding import ground_axioms
-# from src.solvers.a_star import AStarSolver
-
+from src.solvers.forward_chaining import ForwardChainingSolver
+from gui.bridge import InputData
 
 def main_gui():
     """Launch the tkinter GUI application."""
@@ -39,9 +36,8 @@ def main_gui():
     app = FutoshikiApp()
     app.run()
 
-
 def main_cli():
-    """Run CLI mode (backward compatible with original main.py)."""
+    """Run CLI mode (adapted for the new OutputData solver contracts)."""
     parser = argparse.ArgumentParser(description="Futoshiki Solver AI Sandbox")
     parser.add_argument("--input", type=str, required=True, help="Path to input puzzle file")
     parser.add_argument("--solver", type=str, required=True, choices=['backtracking', 'a_star', 'forward_chaining', 'backward_chaining'], help="Solver algorithm to use")
@@ -60,33 +56,55 @@ def main_cli():
         print(f"Error loading puzzle: {e}")
         return
 
-    # 2. Select and initialize the solver
+    # 2. Package into InputData for our new solvers
+    gui_matrix = [list(row) for row in initial_state.board]
+    gui_constraints = []
+    for r1, c1, op, r2, c2 in board.constraints:
+        gui_constraints.append(((r1, c1), (r2, c2), op))
+
+    input_data = InputData(size=board.N, matrix=gui_matrix, constraints=gui_constraints)
+
+    # 3. Select and initialize the solver
     if args.solver == 'backtracking':
-        solver = BacktrackingSolver()
         print(f"\nSolving with {args.solver}...")
-        solution_grid = solver.solve(board)
-        solve_time = solver.solve_time
-        nodes_visited = solver.nodes_visited
-        
+        solver = BacktrackingSolver()
+        output = solver.solve(input_data)
+
     elif args.solver == 'forward_chaining':
         print(f"\nSolving with {args.solver}...")
         kb = KnowledgeBase(board.N)
-        print("Grounding axioms...")
         ground_axioms(kb, board)
+        print(f"\nGrounded clauses: {len(kb.clauses)}")
         solution_state = forward_chaining_solver(initial_state, kb)
         solution_grid = solution_state.board if solution_state else None
-        solve_time = 0.0  # Forward chaining doesn't track timing
+        solve_time = 0  # Forward chaining doesn't track time
         nodes_visited = 0
-        
+    elif args.solver == 'a_star':
+        from src.solvers.a_star import a_star_solver
+        print(f"\nUsing A* solver...")
+        solution_state = a_star_solver(initial_state, board, "advanced")
+        solution_grid = solution_state.board if solution_state else None
+        solve_time = 0
+        nodes_visited = 0
+    elif args.solver == 'backward_chaining':
+        print(f"Solver '{args.solver}' is not yet implemented.")
+        return
     else:
         print(f"Solver '{args.solver}' is not yet implemented.")
         return
 
-    # 3. Handle Output
+    solution_grid = output.solution
+    solve_time = output.stats.get('time_ms', 0) / 1000.0
+
+    # 4. Handle Output
     if solution_grid:
         print(f"\nSolution found in {solve_time:.4f} seconds!")
-        if nodes_visited > 0:
-            print(f"Nodes visited: {nodes_visited}")
+
+        # Display specific stats based on the solver used
+        if 'nodes_visited' in output.stats:
+            print(f"Nodes visited: {output.stats['nodes_visited']}")
+        elif 'clauses_generated' in output.stats:
+            print(f"Clauses generated: {output.stats['clauses_generated']}")
 
         if args.verbose:
             print(format_board(solution_grid, title="Solved State"))
@@ -94,35 +112,33 @@ def main_cli():
         # Prepare output directory/filename
         if os.path.isdir(args.output) or not args.output.endswith('.txt'):
             os.makedirs(args.output, exist_ok=True)
-            base_name = os.path.basename(args.input).replace('.txt', '_solution.txt')
+            base_name = os.path.basename(args.input)
+            # Replace "input-" with "output-" to match naming convention
+            if base_name.startswith('input-'):
+                base_name = 'output-' + base_name[6:]  # Remove "input-" prefix
+            else:
+                # For other filenames, use default naming
+                base_name = 'output-' + base_name.replace('.txt', '') + '.txt'
             output_path = os.path.join(args.output, base_name)
         else:
             output_path = args.output
 
         # Save it
-        save_solution(solution_grid, output_path)
+        save_solution(solution_grid, board.constraints, output_path)
         print(f"Solution saved to {output_path}")
     else:
-        print("\nNo solution exists for this puzzle.")
+        print(f"\nNo solution exists for this puzzle. ({output.message})")
 
 
 def main():
     """
     Main entry point dispatcher.
-    
-    Checks for --cli flag:
-    - With --cli: Run in CLI mode (original behavior)
-    - Without --cli: Launch tkinter GUI
     """
-    # Check if --cli flag is present
     if '--cli' in sys.argv:
-        # Remove --cli from argv so argparse doesn't complain
         sys.argv.remove('--cli')
         main_cli()
     else:
-        # Launch GUI mode
         main_gui()
 
-
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
