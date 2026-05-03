@@ -48,6 +48,46 @@ def run_all_tests():
     except Exception as e:
         print(f"  ✗ Failed to load test_models_advanced: {e}")
         return False
+
+    # Load forward chaining tests
+    try:
+        from tests import test_forward_chaining
+        fc_tests = loader.loadTestsFromModule(test_forward_chaining)
+        suite.addTests(fc_tests)
+        print(f"  ✓ test_forward_chaining.py ({len(fc_tests._tests)} tests)")
+    except Exception as e:
+        print(f"  ✗ Failed to load test_forward_chaining: {e}")
+        return False
+
+    # Load end-to-end integration tests
+    try:
+        from tests import test_integration_end_to_end
+        e2e_tests = loader.loadTestsFromModule(test_integration_end_to_end)
+        suite.addTests(e2e_tests)
+        print(f"  ✓ test_integration_end_to_end.py ({len(e2e_tests._tests)} tests)")
+    except Exception as e:
+        print(f"  ✗ Failed to load test_integration_end_to_end: {e}")
+        return False
+
+    # Load A* tests
+    try:
+        from tests import test_a_star
+        a_star_tests = loader.loadTestsFromModule(test_a_star)
+        suite.addTests(a_star_tests)
+        print(f"  ✓ test_a_star.py ({len(a_star_tests._tests)} tests)")
+    except Exception as e:
+        print(f"  ✗ Failed to load test_a_star: {e}")
+        return False
+
+    # Load heuristic tests
+    try:
+        from tests import test_heuristic
+        heuristic_tests = loader.loadTestsFromModule(test_heuristic)
+        suite.addTests(heuristic_tests)
+        print(f"  ✓ test_heuristic.py ({len(heuristic_tests._tests)} tests)")
+    except Exception as e:
+        print(f"  ✗ Failed to load test_heuristic: {e}")
+        return False
     
     print()
     print("=" * 80)

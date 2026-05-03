@@ -80,11 +80,81 @@ def load_puzzle_file(filename: str) -> Tuple[Board, State]:
     except IndexError:
         raise ValueError("File is missing required constraint lines.")
 
-def save_solution(board: Tuple[Tuple[int, ...], ...], filename: str) -> None:
-    """Save a solved board to a file."""
+def save_solution(board: Tuple[Tuple[int, ...], ...], constraints: Tuple, filename: str) -> None:
+    """
+    Save a solved Futoshiki board with constraints to a file.
+    
+    Format:
+    - Numbers with horizontal constraints on the same line (e.g., "2 < 3")
+    - Vertical constraints on alternating rows (v for >, ^ for <)
+    - Proper spacing and alignment for column readability
+    
+    Args:
+        board: Solved 2D matrix as tuple of tuples
+        constraints: Tuple of constraint tuples (r1, c1, op, r2, c2)
+        filename: Output file path
+    """
+    N = len(board)
+    
+    # Build constraint maps for quick lookup
+    h_constraints = {}  # (r, c) -> operator between (r,c) and (r,c+1)
+    v_constraints = {}  # (r, c) -> operator between (r,c) and (r+1,c)
+    
+    for constraint in constraints:
+        r1, c1, op, r2, c2 = constraint
+        
+        if r1 == r2 and c2 == c1 + 1:  # Horizontal constraint
+            h_constraints[(r1, c1)] = op
+        elif c1 == c2 and r2 == r1 + 1:  # Vertical constraint
+            v_constraints[(r1, c1)] = op
+    
+    lines = []
+    
+    # Determine column width needed (for alignment)
+    # Each cell takes: number + space + operator + space (e.g., "2 < ")
+    col_width = 4  # Default width for "N < " or "N > " or "N   "
+    
+    for r in range(N):
+        # Build the number and horizontal constraint line
+        number_line = ""
+        for c in range(N):
+            # Add the number
+            cell_str = str(board[r][c])
+            number_line += cell_str
+            
+            # Add spacing and constraint if not the last column
+            if c < N - 1:
+                if (r, c) in h_constraints:
+                    number_line += " " + h_constraints[(r, c)] + " "
+                else:
+                    number_line += "   "
+        
+        lines.append(number_line)
+        
+        # Add vertical constraint line (if not the last row)
+        if r < N - 1:
+            v_line = ""
+            for c in range(N):
+                if (r, c) in v_constraints:
+                    # v for >, ^ for <
+                    symbol = "v" if v_constraints[(r, c)] == ">" else "^"
+                    v_line += symbol
+                else:
+                    v_line += " "
+                
+                # Add spacing to align with next column
+                if c < N - 1:
+                    v_line += "   "
+            
+            lines.append(v_line)
+    
+    # Write to file
+    output_text = '\n'.join(lines)
     with open(filename, 'w') as f:
-        for row in board:
-            f.write(' '.join(map(str, row)) + '\n')
+        f.write(output_text)
+    
+    # Also print to stdout
+    print(output_text)
 
 def format_board(board: Tuple[Tuple[int, ...], ...], title: str = "Board") -> str:
     """Format a board for pretty printing."""
