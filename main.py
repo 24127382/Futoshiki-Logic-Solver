@@ -112,13 +112,19 @@ def main_cli():
         # Prepare output directory/filename
         if os.path.isdir(args.output) or not args.output.endswith('.txt'):
             os.makedirs(args.output, exist_ok=True)
-            base_name = os.path.basename(args.input).replace('.txt', '_solution.txt')
+            base_name = os.path.basename(args.input)
+            # Replace "input-" with "output-" to match naming convention
+            if base_name.startswith('input-'):
+                base_name = 'output-' + base_name[6:]  # Remove "input-" prefix
+            else:
+                # For other filenames, use default naming
+                base_name = 'output-' + base_name.replace('.txt', '') + '.txt'
             output_path = os.path.join(args.output, base_name)
         else:
             output_path = args.output
 
         # Save it
-        save_solution(solution_grid, output_path)
+        save_solution(solution_grid, board.constraints, output_path)
         print(f"Solution saved to {output_path}")
     else:
         print(f"\nNo solution exists for this puzzle. ({output.message})")
